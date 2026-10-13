@@ -6,6 +6,7 @@ import json
 # API Ayarı
 GOOGLE_API_KEY = st.secrets["API_KEY"]
 genai.configure(api_key=GOOGLE_API_KEY)
+# Halüsinasyonu önlemek için üretkenlik (temperature) sıfırlandı
 model = genai.GenerativeModel('gemini-3-flash-preview', generation_config={"temperature": 0.0})
 
 st.set_page_config(page_title="SNU Kelime Asistanı", layout="centered")
@@ -31,7 +32,9 @@ with tab1:
             with st.spinner("Yapay zeka analiz ediyor..."):
                 try:
                     gorsel_verisi = [{"mime_type": "image/jpeg", "data": yuklenen_dosya.getvalue()}]
-                   komut = """
+                    
+                    # Girinti hatası düzeltilmiş ve kısıtlandırılmış komut
+                    komut = """
 GÖREVİN: KATI BİR VERİ ÇIKARICISI OLMAKTIR. 
 Aşağıdaki görselde YAZILI OLAN Korece kelimeleri tespit et.
 
@@ -46,7 +49,6 @@ KURALLAR:
                     json_metni = cevap.text.strip().replace("```json", "").replace("```", "")
                     veriler = json.loads(json_metni)
                     
-                    # Çekilen kelimeleri desteye ekle
                     st.session_state.kelimeler.extend(veriler)
                     st.success(f"{len(veriler)} yeni kelime desteye eklendi! 'Quizlet Modu' sekmesine geçebilirsin.")
                 except Exception as e:
@@ -71,31 +73,31 @@ with tab2:
             st.progress(index / toplam)
             st.caption(f"Kalan Kelime: {toplam - index}")
             
-            # Kartın Ön Yüzü
+            # Sadece Korece kelimeyi göster
             st.markdown(f"<h1 style='text-align: center; font-size: 3em; color: #2e7bcf; margin-top: 20px;'>{kart['korece']}</h1>", unsafe_allow_html=True)
+            st.markdown("<br>", unsafe_allow_html=True)
             
-            # Kartın Arka Yüzü (Anlam Görülene Kadar Gizli)
+            # Yeni Mantık: Önce Bildim/Bilemedim sor
             if not st.session_state.kart_arkasi:
-                st.markdown("<br>", unsafe_allow_html=True)
-                if st.button("Anlamını Gör", use_container_width=True):
-                    st.session_state.kart_arkasi = True
-                    st.rerun()
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.button("❌ Bilemedim (Anlamı Göster)", use_container_width=True):
+                        st.session_state.kart_arkasi = True
+                        st.rerun()
+                with col2:
+                    if st.button("✅ Bildim (Sonraki Kelime)", use_container_width=True):
+                        st.session_state.mevcut_kart += 1
+                        st.session_state.kart_arkasi = False
+                        st.rerun()
             else:
+                # Bilemedim denildiğinde açılan açıklama sayfası
                 st.markdown(f"<h3 style='text-align: center;'>🇹🇷 {kart['tr']}</h3>", unsafe_allow_html=True)
                 st.markdown(f"<h4 style='text-align: center; color: gray;'>🇬🇧 {kart['en']}</h4>", unsafe_allow_html=True)
                 st.info(f"**Örnek Cümle:** {kart['ornek_ko']}\n\n**Çeviri:** {kart['ornek_tr']}")
                 
-                col1, col2 = st.columns(2)
-                with col1:
-                    if st.button("❌ Bilemedim", use_container_width=True):
-                        # Bilemediğin kelimeyi listenin en sonuna atar (Aralıklı Tekrar mantığı)
-                        st.session_state.kelimeler.append(kart)
-                        st.session_state.mevcut_kart += 1
-                        st.session_state.kart_arkasi = False
-                        st.rerun()
-                with col2:
-                    if st.button("✅ Bildim", use_container_width=True):
-                        # Bildiğin kelimeyi geçer
-                        st.session_state.mevcut_kart += 1
-                        st.session_state.kart_arkasi = False
-                        st.rerun()
+                if st.button("Destenin Sonuna Ekle ve Devam Et", use_container_width=True):
+                    # Aralıklı tekrar: Bilemediği için destenin sonuna ekle
+                    st.session_state.kelimeler.append(kart)
+                    st.session_state.mevcut_kart += 1
+                    st.session_state.kart_arkasi = False
+                    st.rerun()
