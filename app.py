@@ -6,7 +6,7 @@ import json
 # API Ayarı
 GOOGLE_API_KEY = st.secrets["API_KEY"]
 genai.configure(api_key=GOOGLE_API_KEY)
-model = genai.GenerativeModel('gemini-3-flash-preview')
+model = genai.GenerativeModel('gemini-3-flash-preview', generation_config={"temperature": 0.0})
 
 st.set_page_config(page_title="SNU Kelime Asistanı", layout="centered")
 st.title("🇰🇷 SNU Akıllı Çalışma Asistanı")
@@ -31,12 +31,17 @@ with tab1:
             with st.spinner("Yapay zeka analiz ediyor..."):
                 try:
                     gorsel_verisi = [{"mime_type": "image/jpeg", "data": yuklenen_dosya.getvalue()}]
-                    komut = """
-                    Bu görseldeki Korece metni incele. Sadece TOPIK 4, 5 ve 6 (Orta-İleri) seviyesi kelimeleri çıkar. 
-                    가다, 보다, 친구 gibi TOPIK 1-3 temel kelimelerini KESİNLİKLE yoksay.
-                    Sadece JSON formatında çıktı ver:
-                    [{"korece": "kelime", "tr": "Türkçe", "en": "İngilizce", "ornek_ko": "Örnek Korece cümle", "ornek_tr": "Cümlenin Türkçesi"}]
-                    """
+                   komut = """
+GÖREVİN: KATI BİR VERİ ÇIKARICISI OLMAKTIR. 
+Aşağıdaki görselde YAZILI OLAN Korece kelimeleri tespit et.
+
+KURALLAR:
+1. SADECE ve SADECE görselde FİZİKSEL OLARAK BULUNAN kelimeleri çıkar. Görselde olmayan TEK BİR KELİME BİLE ekleme.
+2. 가다, 보다, 친구, 먹다 gibi çok temel TOPIK 1 ve 2 seviyesi kelimelerini yoksay. Sadece orta ve ileri seviye hedefleri al.
+3. Eksik kelime bırakma. Görseldeki tüm hedef kelimeleri tara.
+4. Sadece JSON formatında çıktı ver, başka hiçbir metin yazma:
+[{"korece": "kelime", "tr": "Türkçe", "en": "İngilizce", "ornek_ko": "Örnek Korece cümle", "ornek_tr": "Cümlenin Türkçesi"}]
+"""
                     cevap = model.generate_content([komut, gorsel_verisi[0]])
                     json_metni = cevap.text.strip().replace("```json", "").replace("```", "")
                     veriler = json.loads(json_metni)
