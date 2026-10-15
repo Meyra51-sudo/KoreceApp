@@ -29,22 +29,21 @@ st.set_page_config(page_title="MEYRA", layout="centered")
 # --- YARDIMCI FONKSİYONLAR ---
 
 def ai_cevap_al(komut, gorsel_verisi=None):
-    # Google'ın en güncel ve aktif modeli
-    try:
-        m = genai.GenerativeModel('gemini-2.5-flash', generation_config={"temperature": 0.0})
-        if gorsel_verisi:
-            cevap = m.generate_content([komut, gorsel_verisi])
-        else:
-            cevap = m.generate_content(komut)
-        return cevap.text
-    except Exception as e:
-        # Alternatif olarak doğrudan gemini-flash deneyelim
-        m_alt = genai.GenerativeModel('gemini-flash', generation_config={"temperature": 0.0})
-        if gorsel_verisi:
-            cevap = m_alt.generate_content([komut, gorsel_verisi])
-        else:
-            cevap = m_alt.generate_content(komut)
-        return cevap.text
+    # Google'ın o an aktif olan herhangi bir flash modelini otomatik bulur, 404 hatasını önler
+    aktif_model = None
+    for m in genai.list_models():
+        if 'generateContent' in m.supported_generation_methods and 'flash' in m.name:
+            aktif_model = m.name
+            break
+    if not aktif_model:
+        aktif_model = 'gemini-1.5-flash'
+        
+    model = genai.GenerativeModel(aktif_model, generation_config={"temperature": 0.0})
+    if gorsel_verisi:
+        cevap = model.generate_content([komut, gorsel_verisi])
+    else:
+        cevap = model.generate_content(komut)
+    return cevap.text
 
 def veritabani_guncelle():
     tum_veriler = st.session_state.kelimeler + st.session_state.calisilmis
@@ -419,7 +418,7 @@ with tab3:
 
 with tab4:
     st.header("✍️ Yazma Pratiği (받아쓰기)")
-    tum_kelimeler = [k for k in (st.session_state.calisilmis + st.session_state.kelimeler) if k.get('tip'] == 'kelime']
+    tum_kelimeler = [k for k in (st.session_state.calisilmis + st.session_state.kelimeler) if k.get('tip') == 'kelime']
     
     dikte_havuzu = [k for k in tum_kelimeler if float(k.get('interval', 1)) < 21]
     
