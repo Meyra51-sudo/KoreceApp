@@ -76,21 +76,27 @@ topik_4_gramerler = ["-아/어 보이다", "-(으)ㄹ 뿐만 아니라", "-(으)
 tab1, tab2, tab3 = st.tabs(["📂 1. Yükle", "🧠 2. Çalışma Modu", "⚙️ 3. Düzenle"])
 
 with tab1:
-    st.markdown("<h2 style='text-align: center;'>반가워 메이라</h2>", unsafe_allow_html=True)
+    st.markdown("<h2 style='text-align: center;'>Hoşgeldin 메이라</h2>", unsafe_allow_html=True)
     st.markdown(f"<h4 style='text-align: center; color: #2e7bcf;'>{st.session_state.gunluk_mesaj}</h4>", unsafe_allow_html=True)
     st.markdown("---")
     
-    gorsel = st.file_uploader("Fotoğraf Çek veya Yükle", type=["jpg", "jpeg", "png"])
+    # accept_multiple_files=True eklendi
+    yuklenen_dosyalar = st.file_uploader("Fotoğraf Çek veya Galeriden Seç (Birden fazla seçebilirsin)", type=["jpg", "jpeg", "png"], accept_multiple_files=True)
     
-    if gorsel is not None:
-        if st.button("Analiz Et ve Desteye Ekle"):
-            with st.spinner("Öğretmen notları analiz ediyor..."):
+    if yuklenen_dosyalar:
+        if st.button("Sayfaları Analiz Et ve Desteye Ekle"):
+            with st.spinner(f"Öğretmen {len(yuklenen_dosyalar)} sayfayı analiz ediyor..."):
                 try:
-                    gorsel_verisi = [{"mime_type": "image/jpeg", "data": gorsel.getvalue()}]
-                    komut = """
+                    yeni_eklenen_toplam = 0
+                    bugun = str(datetime.now().date())
+                    mevcut_korece = {k['korece'].strip() for k in st.session_state.kelimeler + st.session_state.calisilmis}
+                    
+                    # Her bir fotoğrafı sırayla analiz etme döngüsü
+                    for gorsel in yuklenen_dosyalar:
+                        gorsel_verisi = [{"mime_type": "image/jpeg", "data": gorsel.getvalue()}]
+                        komut = """
 GÖREVİN: KATI BİR VERİ ÇIKARICISI OLMAKTIR. 
 Görseldeki Korece kelimeleri, el yazısı notları ve dilbilgisi kurallarını çıkar.
-
 KURALLAR:
 1. ALTI ÇİZİLİ KELİMELER: Unutulan kelimelerdir. KESİNLİKLE LİSTEYE EKLE.
 2. ZIT ANLAMLILAR (X İŞARETİ): "가다 x 오다" gibi arasına 'x' koyulmuş kelimeler zıt anlamlıdır. "tr" kısmına "Anlamı (Zıt Anlamlısı: [Diğer Kelime])" yaz.
@@ -98,39 +104,36 @@ KURALLAR:
 4. KELİMELER: Gramer dışındakilerin "tip" değerini "kelime" yap. Sadece TOPIK 4+ kelimeleri al. Eşanlamlıları virgülle tek satırda birleştir.
 5. ÖRNEK CÜMLELER: 
    A) İLK TERCİH: Kelime veya gramer sayfa üzerinde TAM BİR CÜMLE içinde kullanılmışsa, KESİNLİKLE o orijinal cümleyi al.
-   B) İKİNCİ TERCİH: Kendin üreteceksen özneler HER ZAMAN ünlü kişiler olmalı ve içinde Korece sayma kelimeleri (개, 명 등) ile rakamlar bulunmalı.
+   B) İKİNCİ TERCİH: Kendin üreteceksen özneler HER ZAMAN ünlü kişiler olmalı ve içinde Korece sayma kelimeleri ile rakamlar bulunmalı.
 6. JSON formatı:
 [{"tip": "kelime/gramer", "korece": "hedef metin", "tr": "Türkçe", "en": "İngilizce", "ornek_ko": "Örnek cümle", "ornek_tr": "Çevirisi"}]
 """
-                    cevap = model.generate_content([komut, gorsel_verisi[0]])
-                    json_metni = cevap.text.strip().replace("```json", "").replace("```", "")
-                    veriler = json.loads(json_metni)
+                        cevap = model.generate_content([komut, gorsel_verisi[0]])
+                        json_metni = cevap.text.strip().replace("```json", "").replace("```", "")
+                        veriler = json.loads(json_metni)
+                        
+                        yeni_maddeler = []
+                        for k in veriler:
+                            korece_temiz = k['korece'].strip()
+                            if korece_temiz not in mevcut_korece:
+                                k['korece'] = korece_temiz
+                                k['is_hard'] = False 
+                                k['hard_streak'] = 0
+                                k['interval'] = 1
+                                k['ease'] = 2.5
+                                k['next_review'] = bugun
+                                yeni_maddeler.append(k)
+                                mevcut_korece.add(korece_temiz)
+                        
+                        st.session_state.kelimeler.extend(yeni_maddeler)
+                        yeni_eklenen_toplam += len(yeni_maddeler)
                     
-                    mevcut_korece = {k['korece'].strip() for k in st.session_state.kelimeler + st.session_state.calisilmis}
-                    yeni_maddeler = []
-                    
-                    bugun = str(datetime.now().date())
-                    for k in veriler:
-                        korece_temiz = k['korece'].strip()
-                        if korece_temiz not in mevcut_korece:
-                            k['korece'] = korece_temiz
-                            k['is_hard'] = False 
-                            k['hard_streak'] = 0
-                            k['interval'] = 1
-                            k['ease'] = 2.5
-                            k['next_review'] = bugun
-                            yeni_maddeler.append(k)
-                            mevcut_korece.add(korece_temiz)
-                    
-                    st.session_state.kelimeler.extend(yeni_maddeler)
                     veritabani_guncelle()
-                    
                     random.shuffle(st.session_state.kelimeler)
-                    st.success(f"{len(yeni_maddeler)} yeni madde desteye eklendi ve buluta kaydedildi!")
+                    st.success(f"Analiz tamamlandı! Toplam {yeni_eklenen_toplam} yeni madde desteye eklendi ve buluta kaydedildi.")
                     
                 except Exception as e:
                     st.error(f"Hata: {e}")
-
 with tab2:
     zor_kelime_sayisi = sum(1 for k in (st.session_state.kelimeler + st.session_state.calisilmis) if k.get('is_hard', False))
     toplam_ogrenilen = len(st.session_state.calisilmis)
