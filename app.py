@@ -5,10 +5,8 @@ import json
 import random
 import gspread
 import io
-import base64
 import asyncio
 import edge_tts
-import re
 from google.oauth2.service_account import Credentials
 from datetime import datetime, timedelta
 
@@ -18,7 +16,7 @@ SHEET_URL = st.secrets["SHEET_URL"]
 GCP_JSON = json.loads(st.secrets["GCP_JSON"])
 
 genai.configure(api_key=GOOGLE_API_KEY)
-# Hem kotayı doldurmayan hem de 404 hatası vermeyen en stabil güncel model
+# Kota ve 404 hatası vermeyen, 1500 günlük limiti olan en stabil model:
 model = genai.GenerativeModel('gemini-1.5-flash', generation_config={"temperature": 0.0})
 
 scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
@@ -36,20 +34,20 @@ def veritabani_guncelle():
         sheet.clear()
         sheet.update([df.columns.values.tolist()] + df.values.tolist())
 
-# Zor kelime mantıksal hata (FALSE text) çözümü
 def kelime_zor_mu(kart):
     deger = kart.get('is_hard', False)
     if isinstance(deger, bool):
         return deger
     return str(deger).strip().lower() in ['true', '1', 't', 'y', 'yes']
 
-# Dikte (Yazma) boşluk ve noktalama temizleyici
-def temiz_karsilastir(metin1, metin2):
-    m1 = re.sub(r'[^\w]', '', str(metin1)).strip()
-    m2 = re.sub(r'[^\w]', '', str(metin2)).strip()
-    return m1 == m2
+# Boşluk, virgül veya noktalama işaretlerini yoksayarak sadece harfleri karşılaştırır
+def temiz_karsilastir(m1, m2):
+    def temizle(metin):
+        return ''.join(char for char in str(metin) if char.isalnum())
+    return temizle(m1) == temizle(m2)
 
-# Kadın Sesi (SunHi)
+# Uygulamanın kasmaması için sesleri hafızaya alır (Cache)
+@st.cache_data(show_spinner=False)
 def ses_olustur(metin):
     async def _amain():
         communicate = edge_tts.Communicate(metin, "ko-KR-SunHiNeural")
@@ -71,7 +69,7 @@ if 'veri_yuklendi' not in st.session_state:
     st.session_state.zor_pratik_modu = False
     st.session_state.secilen_gramer = ""
     st.session_state.yazma_karti = None
-    st.session_state.yazma_id = random.randint(10000, 99999) # Ses oynatıcısını sıfırlamak için
+    st.session_state.yazma_id = random.randint(10000, 99999)
     st.session_state.gunluk_mesaj = random.choice([
         "오늘 너무 예뻐요!", "포기하지 마세요!", "오늘도 화이팅!", "한국어 천재 메이라!", "할 수 있어요!"
     ])
@@ -108,7 +106,7 @@ with tab1:
     
     if gorsel is not None:
         if st.button("Analiz Et ve Desteye Ekle"):
-            with st.spinner("Öğretmen sayfayı analiz ediyor..."):
+            with st.spinner("Öğretmen analiz ediyor..."):
                 try:
                     gorsel_verisi = [{"mime_type": "image/jpeg", "data": gorsel.getvalue()}]
                     komut = """
@@ -147,7 +145,7 @@ KURALLAR:
                     st.success(f"Analiz tamamlandı! Toplam {len(yeni_maddeler)} yeni madde başarıyla eklendi.")
                     
                 except Exception as e:
-                    st.error(f"Hata: {e}")
+                    st.error(f"Hata: Lütfen tekrar deneyin.")
 
 with tab2:
     zor_kelime_sayisi = sum(1 for k in (st.session_state.kelimeler + st.session_state.calisilmis) if kelime_zor_mu(k))
@@ -222,10 +220,7 @@ with tab2:
 
         elif kart.get('tip') == 'gramer':
             st.markdown(f"<h1 style='text-align: center; color: #ff4b4b; margin-top: 20px;'>{kart['korece']}</h1>", unsafe_allow_html=True)
-            ses_bytes = ses_olustur(kart['korece'])
-            b64 = base64.b64encode(ses_bytes).decode()
-            # Dinamik ID ile takılmayı önlüyoruz
-            st.markdown(f'<audio id="audio_gramer_{st.session_state.yazma_id}" controls src="data:audio/mp3;base64,{b64}"></audio>', unsafe_allow_html=True)
+            st.audio(ses_olustur(kart['korece']), format="audio/mp3")
             st.markdown("<p style='text-align: center; font-weight: bold; color: gray;'>[Gramer / Dilbilgisi]</p>", unsafe_allow_html=True)
             st.info(f"**Anlamı:** {kart['tr']}\n\n**Örnek:** {kart['ornek_ko']} ({kart['ornek_tr']})")
             
@@ -250,7 +245,6 @@ with tab2:
                         st.session_state.kelimeler.append(islem_karti)
                         st.session_state.gecmis.append({'kelime': islem_karti, 'islem': 'gramer_tekrar'})
                         st.session_state.gramer_feedback = None
-                        st.session_state.yazma_id = random.randint(10000, 99999)
                         veritabani_guncelle()
                         st.rerun()
                 with col2:
@@ -262,7 +256,6 @@ with tab2:
                         st.session_state.calisilmis.append(islem_karti)
                         st.session_state.gecmis.append({'kelime': islem_karti, 'islem': 'bildim'})
                         st.session_state.gramer_feedback = None
-                        st.session_state.yazma_id = random.randint(10000, 99999)
                         veritabani_guncelle()
                         st.rerun()
 
@@ -291,9 +284,7 @@ with tab2:
                     st.markdown("<p style='text-align: center; color: #ff8c00; font-weight: bold;'>🔥 Zor Kelime</p>", unsafe_allow_html=True)
                 
                 st.markdown(f"<h1 style='text-align: center; font-size: 3em; color: #2e7bcf; margin-top: 10px;'>{kart['korece']}</h1>", unsafe_allow_html=True)
-                ses_bytes = ses_olustur(kart['korece'])
-                b64 = base64.b64encode(ses_bytes).decode()
-                st.markdown(f'<audio id="audio_kelime_{st.session_state.yazma_id}" controls src="data:audio/mp3;base64,{b64}"></audio>', unsafe_allow_html=True)
+                st.audio(ses_olustur(kart['korece']), format="audio/mp3")
                 
                 if not st.session_state.kart_arkasi:
                     col1, col2, col3, col4 = st.columns(4)
@@ -325,13 +316,13 @@ with tab2:
                             st.session_state.calisilmis.append(islem_karti)
                             st.session_state.gecmis.append({'kelime': islem_karti, 'islem': 'bildim'})
                             st.session_state.kart_arkasi = False
-                            st.session_state.yazma_id = random.randint(10000, 99999)
                             veritabani_guncelle()
                             st.rerun()
                 else:
                     st.markdown(f"<h3 style='text-align: center;'>🇹🇷 {kart['tr']}</h3>", unsafe_allow_html=True)
                     st.markdown(f"<h4 style='text-align: center; color: gray;'>🇬🇧 {kart['en']}</h4>", unsafe_allow_html=True)
                     st.info(f"**Örnek Cümle:** {kart['ornek_ko']}\n\n**Çeviri:** {kart['ornek_tr']}")
+                    st.audio(ses_olustur(kart['ornek_ko']), format="audio/mp3")
                     
                     if st.session_state.arkayuz_modu == 'emin_degilim':
                         st.markdown("<p style='text-align: center; color: gray;'>Şimdi karar ver: Anlamını doğru tahmin etmiş miydin?</p>", unsafe_allow_html=True)
@@ -345,7 +336,6 @@ with tab2:
                                 st.session_state.kelimeler.append(islem_karti) 
                                 st.session_state.gecmis.append({'kelime': islem_karti, 'islem': 'bilemedim'})
                                 st.session_state.kart_arkasi = False
-                                st.session_state.yazma_id = random.randint(10000, 99999)
                                 veritabani_guncelle()
                                 st.rerun()
                         with colB:
@@ -357,7 +347,6 @@ with tab2:
                                 st.session_state.calisilmis.append(islem_karti)
                                 st.session_state.gecmis.append({'kelime': islem_karti, 'islem': 'bildim'})
                                 st.session_state.kart_arkasi = False
-                                st.session_state.yazma_id = random.randint(10000, 99999)
                                 veritabani_guncelle()
                                 st.rerun()
                     else:
@@ -366,7 +355,6 @@ with tab2:
                             st.session_state.kelimeler.append(islem_karti) 
                             st.session_state.gecmis.append({'kelime': islem_karti, 'islem': 'bilemedim'})
                             st.session_state.kart_arkasi = False
-                            st.session_state.yazma_id = random.randint(10000, 99999)
                             veritabani_guncelle()
                             st.rerun()
 
@@ -406,31 +394,6 @@ with tab4:
     if len(tum_kelimeler) == 0:
         st.info("Pratik yapacak kelime yok.")
     else:
-        if st.session_state.get('yazma_karti') is None or st.session_state.yazma_karti not in tum_kelimeler:
-            st.session_state.yazma_karti = random.choice(tum_kelimeler)
-            st.session_state.yazma_id = random.randint(10000, 99999)
-            
-        kart = st.session_state.yazma_karti
-        st.info("Aşağıdaki sesi dinle ve duyduğun Korece kelimeyi yaz.")
-        
-        ses_bytes = ses_olustur(kart['korece'])
-        b64 = base64.b64encode(ses_bytes).decode()
-        
-        # Oynatıcı kimliğini her kelimede tamamen benzersiz yapıyoruz
-        ses_html = f'<audio id="audio_dikte_{st.session_state.yazma_id}" controls loop><source src="data:audio/mp3;base64,{b64}" type="audio/mp3"></audio>'
-        st.markdown(ses_html, unsafe_allow_html=True)
-        
-        cevap = st.text_input("Duyduğun kelimeyi yaz:", key=f"dikte_input_{st.session_state.yazma_id}")
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("Kontrol Et", use_container_width=True):
-                if temiz_karsilastir(cevap, kart['korece']):
-                    st.success("Doğru! Harikasın 메이라!")
-                else:
-                    st.error(f"Yanlış. Doğrusu: '{kart['korece']}' olmalıydı.")
-        with col2:
-            if st.button("Başka Kelimeye Geç", use_container_width=True):
-                st.session_state.yazma_karti = random.choice(tum_kelimeler)
-                st.session_state.yazma_id = random.randint(10000, 99999)
-                st.rerun()
+        # Sadece "Başka Kelimeye Geç" tıklandığında veya ilk girişte kelime seç
+        if st.session_state.get('yazma_karti') is None:
+            st.session_state.yazma_karti = random.choice(tum_kel
