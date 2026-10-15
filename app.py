@@ -5,7 +5,6 @@ import json
 import random
 import gspread
 import io
-import base64
 import asyncio
 import edge_tts
 import re
@@ -18,8 +17,6 @@ SHEET_URL = st.secrets["SHEET_URL"]
 GCP_JSON = json.loads(st.secrets["GCP_JSON"])
 
 genai.configure(api_key=GOOGLE_API_KEY)
-# 404 Hatasını kesin olarak çözen tam sürüm (latest) modeli
-model = genai.GenerativeModel('gemini-1.5-flash-latest', generation_config={"temperature": 0.0})
 
 scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
 creds = Credentials.from_service_account_info(GCP_JSON, scopes=scopes)
@@ -29,6 +26,24 @@ sheet = gc.open_by_url(SHEET_URL).sheet1
 st.set_page_config(page_title="MEYRA", layout="centered")
 
 # --- YARDIMCI FONKSİYONLAR ---
+
+# Yapay Zeka Çökme Önleyici (Yedekli Model Sistemi)
+def ai_cevap_al(komut, gorsel_verisi=None):
+    modeller = ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-pro', 'gemini-1.0-pro']
+    son_hata = ""
+    for m_adi in modeller:
+        try:
+            m = genai.GenerativeModel(m_adi, generation_config={"temperature": 0.0})
+            if gorsel_verisi:
+                cevap = m.generate_content([komut, gorsel_verisi])
+            else:
+                cevap = m.generate_content(komut)
+            return cevap.text
+        except Exception as e:
+            son_hata = str(e)
+            continue # Hata verirse çökmek yerine listedeki diğer modele geçer
+    raise Exception(f"Sistem meşgul veya API hatası. Lütfen biraz bekleyip tekrar dene. (Detay: {son_hata})")
+
 def veritabani_guncelle():
     tum_veriler = st.session_state.kelimeler + st.session_state.calisilmis
     if tum_veriler:
@@ -108,7 +123,7 @@ with tab1:
         if st.button("Analiz Et ve Desteye Ekle"):
             with st.spinner("Öğretmen sayfayı analiz ediyor..."):
                 try:
-                    gorsel_verisi = [{"mime_type": "image/jpeg", "data": gorsel.getvalue()}]
+                    gorsel_verisi = {"mime_type": "image/jpeg", "data": gorsel.getvalue()}
                     komut = """
 GÖREVİN: KATI BİR VERİ ÇIKARICISI OLMAKTIR. Görseldeki Korece kelimeleri ve gramerleri çıkar.
 KURALLAR:
@@ -119,8 +134,9 @@ KURALLAR:
 5. ÖRNEK CÜMLELER: Kitaptaki orijinal cümleyi al. Yoksa ünlü özneli ve sayma kelimeli cümle üret.
 6. JSON formatı: [{"tip": "kelime/gramer", "korece": "metin", "tr": "Türkçe", "en": "İngilizce", "ornek_ko": "Örnek cümle", "ornek_tr": "Çeviri"}]
 """
-                    cevap = model.generate_content([komut, gorsel_verisi[0]])
-                    json_metni = cevap.text.strip().replace("```json", "").replace("```", "")
+                    # Çökme önleyici yedekli fonksiyon çağrılır
+                    json_metni = ai_cevap_al(komut, gorsel_verisi)
+                    json_metni = json_metni.strip().replace("```json", "").replace("```", "")
                     veriler = json.loads(json_metni)
                     
                     mevcut_korece = {k['korece'].strip() for k in st.session_state.kelimeler + st.session_state.calisilmis}
@@ -145,7 +161,7 @@ KURALLAR:
                     st.success(f"Analiz tamamlandı! Toplam {len(yeni_maddeler)} yeni madde başarıyla eklendi.")
                     
                 except Exception as e:
-                    st.error(f"Sistem Hatası: {e}")
+                    st.error(f"Hata Oluştu: {e}")
 
 with tab2:
     zor_kelime_sayisi = sum(1 for k in (st.session_state.kelimeler + st.session_state.calisilmis) if kelime_zor_mu(k))
@@ -195,9 +211,12 @@ with tab2:
             if st.button("Öğretmene Gönder", use_container_width=True):
                 if kullanici_cumlesi:
                     with st.spinner("Öğretmen cümleni okuyor..."):
-                        geribildirim_komutu = f"Adın AI Öğretmen. Karşındaki Meyra. Meyra '{kart['korece']}' kelimesini ve '{st.session_state.secilen_gramer}' gramerini kullanarak şu cümleyi kurdu: '{kullanici_cumlesi}'. Cümle doğru mu? Hata varsa doğrudan ona açıkla."
-                        cevap = model.generate_content(geribildirim_komutu)
-                        st.session_state.gramer_feedback = cevap.text
+                        try:
+                            geribildirim_komutu = f"Adın AI Öğretmen. Karşındaki Meyra. Meyra '{kart['korece']}' kelimesini ve '{st.session_state.secilen_gramer}' gramerini kullanarak şu cümleyi kurdu: '{kullanici_cumlesi}'. Cümle doğru mu? Hata varsa doğrudan ona açıkla."
+                            cevap_metni = ai_cevap_al(geribildirim_komutu)
+                            st.session_state.gramer_feedback = cevap_metni
+                        except Exception as e:
+                            st.error(f"Bağlantı hatası: {e}")
             
             if st.session_state.gramer_feedback:
                 st.success("👩‍🏫 **Öğretmenin Geri Bildirimi:**")
@@ -228,9 +247,12 @@ with tab2:
             if st.button("Cümlemi Kontrol Et", use_container_width=True):
                 if kullanici_cumlesi:
                     with st.spinner("Öğretmen cümleni inceliyor..."):
-                        geribildirim_komutu = f"Adın AI Öğretmen. Karşındaki Meyra. Meyra '{kart['korece']}' gramerini kullanarak şu cümleyi kurdu: '{kullanici_cumlesi}'. Doğru mu? Hata varsa doğrudan Meyra'ya hitap ederek düzelt."
-                        cevap = model.generate_content(geribildirim_komutu)
-                        st.session_state.gramer_feedback = cevap.text
+                        try:
+                            geribildirim_komutu = f"Adın AI Öğretmen. Karşındaki Meyra. Meyra '{kart['korece']}' gramerini kullanarak şu cümleyi kurdu: '{kullanici_cumlesi}'. Doğru mu? Hata varsa doğrudan Meyra'ya hitap ederek düzelt."
+                            cevap_metni = ai_cevap_al(geribildirim_komutu)
+                            st.session_state.gramer_feedback = cevap_metni
+                        except Exception as e:
+                            st.error(f"Bağlantı hatası: {e}")
             
             if st.session_state.gramer_feedback:
                 st.success("📝 **Öğretmenin Geri Bildirimi:**")
@@ -411,10 +433,8 @@ with tab4:
         kart = st.session_state.yazma_karti
         st.info("Aşağıdaki sesi dinle ve duyduğun Korece kelimeyi yaz.")
         
-        ses_bytes = ses_olustur(kart['korece'])
-        b64 = base64.b64encode(ses_bytes).decode()
-        ses_html = f'<audio id="audio_dikte_{st.session_state.yazma_id}" controls loop><source src="data:audio/mp3;base64,{b64}" type="audio/mp3"></audio>'
-        st.markdown(ses_html, unsafe_allow_html=True)
+        # Native st.audio ile tamamen güvenli loop (Hayalet sesi engeller)
+        st.audio(ses_olustur(kart['korece']), format="audio/mp3", loop=True)
         
         cevap = st.text_input("Duyduğun kelimeyi yaz:", key=f"dikte_input_{st.session_state.yazma_id}")
         
