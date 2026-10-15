@@ -26,25 +26,25 @@ sheet = gc.open_by_url(SHEET_URL).sheet1
 
 st.set_page_config(page_title="MEYRA", layout="centered")
 
-# --- YARDIMCI FONKSİYONLAR (404'ü Kökten Çözen Dinamik Bağlantı) ---
+# --- YARDIMCI FONKSİYONLAR ---
+
 def ai_cevap_al(komut, gorsel_verisi=None):
-    # Sabit model adı yazmak yerine Google'ın listesindeki ilk çalışan flash/pro modelini otomatik seçer
-    aktif_model_adi = "gemini-1.5-flash"
     try:
-        for m in genai.list_models():
-            if 'generateContent' in m.supported_generation_methods:
-                if 'flash' in m.name.lower():
-                    aktif_model_adi = m.name
-                    break
-    except:
-        pass
-        
-    model = genai.GenerativeModel(aktif_model_adi, generation_config={"temperature": 0.0})
-    if gorsel_verisi:
-        cevap = model.generate_content([komut, gorsel_verisi])
-    else:
-        cevap = model.generate_content(komut)
-    return cevap.text
+        # Google'ın zorunlu tuttuğu tek geçerli model
+        model = genai.GenerativeModel('gemini-3.8-flash', generation_config={"temperature": 0.0})
+        if gorsel_verisi:
+            cevap = model.generate_content([komut, gorsel_verisi])
+        else:
+            cevap = model.generate_content(komut)
+        return cevap.text
+    except Exception as e:
+        hata_mesaji = str(e).lower()
+        if "429" in hata_mesaji or "quota" in hata_mesaji:
+            raise Exception("Google API günlük ücretsiz 20 işlem limitin doldu. Lütfen yarın tekrar dene veya Google AI Studio'dan farklı bir hesapla yeni bir API Key al.")
+        elif "404" in hata_mesaji:
+            raise Exception("API Key bu modele erişemiyor. Google AI Studio üzerinden 'gemini-3.8-flash' erişimini kontrol et.")
+        else:
+            raise Exception(f"Beklenmeyen API Hatası: {e}")
 
 def veritabani_guncelle():
     tum_veriler = st.session_state.kelimeler + st.session_state.calisilmis
@@ -174,7 +174,7 @@ KURALLAR:
 2. ZIT ANLAMLILAR: Arasında 'x' olanlar zıt anlamlıdır. "tr" kısmına "Anlamı (Zıt Anlamlısı: [Diğer Kelime])" yaz.
 3. GRAMER: Başına tire (-) koy ve "tip" değerini "gramer" yap.
 4. KELİMELER: "tip" değerini "kelime" yap. Sadece TOPIK 4+ al.
-5. ÖRNEK CÜMLELER: Kitaptaki orijinal cümleyi al. Yoksa ünlü özneli ve sayma kelimeli cümle üret.
+5. ÖRNEK CÜMLELER: Kitaptaki orijinal cümleyi al. Yoksa 유명인사 özneli ve sayma kelimeli cümle üret.
 6. JSON formatı: [{"tip": "kelime/gramer", "korece": "metin", "tr": "Türkçe", "en": "İngilizce", "ornek_ko": "Örnek cümle", "ornek_tr": "Çeviri"}]
 """
                     json_metni = ai_cevap_al(komut, gorsel_verisi)
@@ -200,10 +200,10 @@ KURALLAR:
                     st.session_state.kelimeler.extend(yeni_maddeler)
                     veritabani_guncelle()
                     random.shuffle(st.session_state.kelimeler)
-                    st.success(f"Analiz tamamlandı! Toplam {len(yeni_maddeler)} yeni madde başarıyla eklendi.")
+                    st.success(f"Analiz tamamlandı! Toplam {len(yeni_maddeler)} 새로운 단어가 추가되었습니다.")
                     
                 except Exception as e:
-                    st.error(f"Hata Oluştu: {e}")
+                    st.error(str(e))
 
 with tab2:
     zor_kelime_sayisi = sum(1 for k in (st.session_state.kelimeler + st.session_state.calisilmis) if kelime_zor_mu(k))
@@ -254,11 +254,11 @@ with tab2:
                 if kullanici_cumlesi:
                     with st.spinner("Öğretmen cümleni okuyor..."):
                         try:
-                            geribildirim_komutu = f"Adın AI Öğretmen. Karşındaki Meyra. Meyra '{kart['korece']}' kelimesini ve '{st.session_state.secilen_gramer}' gramerini kullanarak şu cümleyi kurdu: '{kullanici_cumlesi}'. Cümle doğru mu? Hata varsa doğrudan ona açıkla."
+                            geribildirim_komutu = f"Adın AI Öğretmen. Karşındaki Meyra. Meyra '{kart['korece']}' kelimesini ve '{st.session_state.secilen_gramer}' gramerini 사용하여 다음 문장을 만들었습니다: '{kullanici_cumlesi}'. 이 문장이 맞습니까? 틀린 부분이 있다면 Meyra에게 직접 설명하고 수정해주세요."
                             cevap_metni = ai_cevap_al(geribildirim_komutu)
                             st.session_state.gramer_feedback = cevap_metni
                         except Exception as e:
-                            st.error(f"Bağlantı hatası: {e}")
+                            st.error(str(e))
             
             if st.session_state.gramer_feedback:
                 st.success("👩‍🏫 **Öğretmenin Geri Bildirimi:**")
@@ -296,7 +296,7 @@ with tab2:
                             cevap_metni = ai_cevap_al(geribildirim_komutu)
                             st.session_state.gramer_feedback = cevap_metni
                         except Exception as e:
-                            st.error(f"Bağlantı hatası: {e}")
+                            st.error(str(e))
             
             if st.session_state.gramer_feedback:
                 st.success("📝 **Öğretmenin Geri Bildirimi:**")
@@ -467,7 +467,7 @@ with tab4:
     
     if len(dikte_havuzu) == 0:
         if len(tum_kelimeler) > 0:
-            st.success("🎉 Harika! Tüm kelimeler uzun süreli hafızana yerleşmiş durumda. Şu an dikte yapılacak taze kelime yok.")
+            st.success("🎉 Harika! 모든 단어가 장기 기억에 저장되었습니다. Şu an dikte yapılacak taze kelime yok.")
         else:
             st.info("Pratik yapacak kelime yok.")
     else:
@@ -487,9 +487,9 @@ with tab4:
         with col1:
             if st.button("Kontrol Et", use_container_width=True):
                 if temiz_karsilastir(cevap, kart['korece']):
-                    st.success("Doğru! Harikasın 메이라!")
+                    st.success("정답입니다! Harikasın 메이라!")
                 else:
-                    st.error(f"Yanlış. Doğrusu: '{kart['korece']}' olmalıydı.")
+                    st.error(f"틀렸습니다. Doğrusu: '{kart['korece']}' olmalıydı.")
         with col2:
             if st.button("Başka Kelimeye Geç", use_container_width=True):
                 st.session_state.yazma_karti = random.choice(dikte_havuzu)
