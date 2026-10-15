@@ -44,6 +44,7 @@ if 'veri_yuklendi' not in st.session_state:
     st.session_state.calisilmis = []
     st.session_state.gecmis = []
     st.session_state.kart_arkasi = False
+    st.session_state.arkayuz_modu = 'bilemedim' # 'bilemedim' veya 'emin_degilim'
     st.session_state.gramer_feedback = None
     st.session_state.zor_pratik_modu = False
     st.session_state.secilen_gramer = ""
@@ -86,7 +87,6 @@ with tab1:
             with st.spinner("Öğretmen notları analiz ediyor..."):
                 try:
                     gorsel_verisi = [{"mime_type": "image/jpeg", "data": gorsel.getvalue()}]
-                    # AI'dan is_hard vb. parametreleri üretmesi komutunu tamamen kaldırdık.
                     komut = """
 GÖREVİN: KATI BİR VERİ ÇIKARICISI OLMAKTIR. 
 Görseldeki Korece kelimeleri, el yazısı notları ve dilbilgisi kurallarını çıkar.
@@ -114,7 +114,6 @@ KURALLAR:
                         korece_temiz = k['korece'].strip()
                         if korece_temiz not in mevcut_korece:
                             k['korece'] = korece_temiz
-                            # AI yerine Python ile sistemsel değerleri varsayılan olarak atıyoruz.
                             k['is_hard'] = False 
                             k['hard_streak'] = 0
                             k['interval'] = 1
@@ -146,8 +145,9 @@ with tab2:
     if len(st.session_state.gecmis) > 0 and not st.session_state.zor_pratik_modu and not st.session_state.gramer_feedback:
         if st.button("↩️ Son İşlemi Geri Al"):
             son_islem = st.session_state.gecmis.pop()
+            # ValueError hatasını önlemek için doğrudan listenin son elemanını siliyoruz
             if son_islem['islem'] == 'bildim':
-                st.session_state.calisilmis.remove(son_islem['kelime'])
+                st.session_state.calisilmis.pop() 
                 st.session_state.kelimeler.insert(0, son_islem['kelime'])
             elif son_islem['islem'] in ['bilemedim', 'zor', 'gramer_tekrar']:
                 st.session_state.kelimeler.pop() 
@@ -207,7 +207,7 @@ with tab2:
 
         elif kart.get('tip') == 'gramer':
             st.markdown(f"<h1 style='text-align: center; color: #ff4b4b; margin-top: 20px;'>{kart['korece']}</h1>", unsafe_allow_html=True)
-            st.audio(ses_olustur(kart['korece']), format='audio/mp3') # Ses Eklentisi
+            st.audio(ses_olustur(kart['korece']), format='audio/mp3') 
             st.markdown("<p style='text-align: center; font-weight: bold; color: gray;'>[Gramer / Dilbilgisi]</p>", unsafe_allow_html=True)
             st.info(f"**Anlamı:** {kart['tr']}\n\n**Örnek:** {kart['ornek_ko']} ({kart['ornek_tr']})")
             
@@ -273,25 +273,33 @@ with tab2:
                     st.markdown("<p style='text-align: center; color: #ff8c00; font-weight: bold;'>🔥 Zor Kelime</p>", unsafe_allow_html=True)
                 
                 st.markdown(f"<h1 style='text-align: center; font-size: 3em; color: #2e7bcf; margin-top: 10px;'>{kart['korece']}</h1>", unsafe_allow_html=True)
-                st.audio(ses_olustur(kart['korece']), format='audio/mp3') # Ses Eklentisi
+                st.audio(ses_olustur(kart['korece']), format='audio/mp3') 
                 
                 if not st.session_state.kart_arkasi:
-                    col1, col2, col3 = st.columns(3)
+                    # Yeni Tasarım: 4 Butonlu Ön Yüz
+                    col1, col2, col3, col4 = st.columns(4)
                     with col1:
-                        if st.button("❌ Bilemedim", use_container_width=True):
+                        if st.button("❌ Bilemedim"):
                             kart['ease'] = max(1.3, kart.get('ease', 2.5) - 0.2)
                             kart['interval'] = 1
                             kart['next_review'] = str(bugun_tarihi)
                             st.session_state.kart_arkasi = True
+                            st.session_state.arkayuz_modu = 'bilemedim'
                             st.rerun()
                     with col2:
-                        if st.button("⚠️ Zor (Pratik Yap)", use_container_width=True):
+                        if st.button("👀 Anlamı Gör"):
+                            # Puan düşürmeden sadece arkasını gösterir
+                            st.session_state.kart_arkasi = True
+                            st.session_state.arkayuz_modu = 'emin_degilim'
+                            st.rerun()
+                    with col3:
+                        if st.button("⚠️ Zor"):
                             kart['is_hard'] = True
                             st.session_state.secilen_gramer = random.choice(topik_4_gramerler)
                             st.session_state.zor_pratik_modu = True
                             st.rerun()
-                    with col3:
-                        if st.button("✅ Bildim", use_container_width=True):
+                    with col4:
+                        if st.button("✅ Bildim"):
                             kart['ease'] = kart.get('ease', 2.5) + 0.1
                             kart['interval'] = max(1, int(kart.get('interval', 1) * kart['ease']))
                             kart['next_review'] = str(bugun_tarihi + timedelta(days=kart['interval']))
@@ -305,15 +313,42 @@ with tab2:
                     st.markdown(f"<h3 style='text-align: center;'>🇹🇷 {kart['tr']}</h3>", unsafe_allow_html=True)
                     st.markdown(f"<h4 style='text-align: center; color: gray;'>🇬🇧 {kart['en']}</h4>", unsafe_allow_html=True)
                     st.info(f"**Örnek Cümle:** {kart['ornek_ko']}\n\n**Çeviri:** {kart['ornek_tr']}")
-                    st.audio(ses_olustur(kart['ornek_ko']), format='audio/mp3') # Örnek Cümle Ses Eklentisi
+                    st.audio(ses_olustur(kart['ornek_ko']), format='audio/mp3') 
                     
-                    if st.button("Destenin Sonuna Ekle ve Devam Et", use_container_width=True):
-                        islem_karti = st.session_state.kelimeler.pop(0)
-                        st.session_state.kelimeler.append(islem_karti) 
-                        st.session_state.gecmis.append({'kelime': islem_karti, 'islem': 'bilemedim'})
-                        st.session_state.kart_arkasi = False
-                        veritabani_guncelle()
-                        st.rerun()
+                    # Arka yüz butonları (Anlamı Gör modundan gelindiyse karar butonları çıkar)
+                    if st.session_state.arkayuz_modu == 'emin_degilim':
+                        st.markdown("<p style='text-align: center; color: gray;'>Şimdi karar ver: Anlamını doğru tahmin etmiş miydin?</p>", unsafe_allow_html=True)
+                        colA, colB = st.columns(2)
+                        with colA:
+                            if st.button("❌ Hayır, bilmiyormuşum", use_container_width=True):
+                                kart['ease'] = max(1.3, kart.get('ease', 2.5) - 0.2)
+                                kart['interval'] = 1
+                                kart['next_review'] = str(bugun_tarihi)
+                                islem_karti = st.session_state.kelimeler.pop(0)
+                                st.session_state.kelimeler.append(islem_karti) 
+                                st.session_state.gecmis.append({'kelime': islem_karti, 'islem': 'bilemedim'})
+                                st.session_state.kart_arkasi = False
+                                veritabani_guncelle()
+                                st.rerun()
+                        with colB:
+                            if st.button("✅ Evet, biliyordum", use_container_width=True):
+                                kart['ease'] = kart.get('ease', 2.5) + 0.1
+                                kart['interval'] = max(1, int(kart.get('interval', 1) * kart['ease']))
+                                kart['next_review'] = str(bugun_tarihi + timedelta(days=kart['interval']))
+                                islem_karti = st.session_state.kelimeler.pop(0)
+                                st.session_state.calisilmis.append(islem_karti)
+                                st.session_state.gecmis.append({'kelime': islem_karti, 'islem': 'bildim'})
+                                st.session_state.kart_arkasi = False
+                                veritabani_guncelle()
+                                st.rerun()
+                    else:
+                        if st.button("Destenin Sonuna Ekle ve Devam Et", use_container_width=True):
+                            islem_karti = st.session_state.kelimeler.pop(0)
+                            st.session_state.kelimeler.append(islem_karti) 
+                            st.session_state.gecmis.append({'kelime': islem_karti, 'islem': 'bilemedim'})
+                            st.session_state.kart_arkasi = False
+                            veritabani_guncelle()
+                            st.rerun()
 
 with tab3:
     st.subheader("Veritabanını Düzenle")
