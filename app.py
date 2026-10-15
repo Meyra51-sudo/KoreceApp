@@ -29,8 +29,17 @@ st.set_page_config(page_title="MEYRA", layout="centered")
 # --- YARDIMCI FONKSİYONLAR ---
 
 def ai_cevap_al(komut, gorsel_verisi=None):
-    # Asla kota aşımı vermeyen en kararlı ana model
-    model = genai.GenerativeModel('gemini-1.5-flash', generation_config={"temperature": 0.0})
+    # Sunucuda o an aktif olan flash modelini otomatik bulur, 404 hatalarını kökten engeller
+    aktif_model = 'gemini-1.5-flash'
+    try:
+        for m in genai.list_models():
+            if 'generateContent' in m.supported_generation_methods and ('flash' in m.name.lower() or 'pro' in m.name.lower()):
+                aktif_model = m.name
+                break
+    except:
+        pass
+        
+    model = genai.GenerativeModel(aktif_model, generation_config={"temperature": 0.0})
     if gorsel_verisi:
         cevap = model.generate_content([komut, gorsel_verisi])
     else:
@@ -77,7 +86,7 @@ motivasyon_cumleleri = [
     "열정은 모든 것을 가능하게 합니다.", "성공은 준비된 사람에게 찾아옵니다.", "지금 흘린 땀은 헛되지 않아요.",
     "당신의 꿈을 응원합니다.", "빛나는 미래가 당신을 기다리고 있어요.", "한 걸음씩 꾸준히 나아가세요.",
     "어려움은 이겨내라고 있는 것입니다.", "오늘의 노력이 내일의 실력이 됩니다.", "포기는 가장 쉬운 선택일 뿐입니다.",
-    "당신은 이미 충분히 잘하고 있어요.", "끝까지 포기하지 않는 사람이 승잡니다.", "언제나 응원하고 있을게요.",
+    "당신은 이미 충분히 잘하고 있어요.", "끝까지 포기하지 않는 사람이 승자입니다.", "언제나 응원하고 있을게요.",
     "배움은 언제나 보람차다.", "실패는 성공의 어머니입니다.", "마음먹은 것은 무엇이든 해낼 수 있어요.",
     "오늘 하루도 멋지게 채워봐요.", "당신의 언어 실력이 날마다 늘고 있어요.", "꾸준함은 모든 재능을 이깁니다.",
     "멋진 도전을 하고 있는 당신을 응원해요.", "스스로를 의심하지 마세요.", "모든 위대한 업적은 작은 시작에서 비롯됩니다.",
@@ -182,7 +191,7 @@ KURALLAR:
                             k['korece'] = korece_temiz
                             k['is_hard'] = False 
                             k['hard_streak'] = 0
-                            k['interval'] = 1  # Yeni eklenenlerin aralığı 1 gün olarak sabitlenir
+                            k['interval'] = 1 
                             k['ease'] = 2.5
                             k['next_review'] = bugun
                             yeni_maddeler.append(k)
@@ -262,7 +271,6 @@ with tab2:
                         st.rerun()
                     else:
                         islem_karti = st.session_state.kelimeler.pop(0)
-                        # Zor kartların hemen üst üste gelmemesi için destenin rastgele 3. ile 6. sırasına yerleştirilir
                         hedef_indeks = min(len(st.session_state.kelimeler), random.randint(3, 6))
                         st.session_state.kelimeler.insert(hedef_indeks, islem_karti)
                         st.session_state.gecmis.append({'kelime': islem_karti, 'islem': 'zor'})
