@@ -29,16 +29,8 @@ st.set_page_config(page_title="MEYRA", layout="centered")
 # --- YARDIMCI FONKSİYONLAR ---
 
 def ai_cevap_al(komut, gorsel_verisi=None):
-    # Google'ın o an aktif olan herhangi bir flash modelini otomatik bulur, 404 hatasını önler
-    aktif_model = None
-    for m in genai.list_models():
-        if 'generateContent' in m.supported_generation_methods and 'flash' in m.name:
-            aktif_model = m.name
-            break
-    if not aktif_model:
-        aktif_model = 'gemini-1.5-flash'
-        
-    model = genai.GenerativeModel(aktif_model, generation_config={"temperature": 0.0})
+    # Google'ın yeni zorunlu kıldığı güncel model: gemini-3.8-flash
+    model = genai.GenerativeModel('gemini-3.8-flash', generation_config={"temperature": 0.0})
     if gorsel_verisi:
         cevap = model.generate_content([komut, gorsel_verisi])
     else:
