@@ -6,6 +6,7 @@ import random
 import gspread
 import io
 import asyncio
+import base64
 import edge_tts
 import re
 from google.oauth2.service_account import Credentials
@@ -27,9 +28,8 @@ st.set_page_config(page_title="MEYRA", layout="centered")
 
 # --- YARDIMCI FONKSİYONLAR ---
 
-# Güncel ve kararlı model (gemini-2.5-flash) ile güvenli AI çağrısı
 def ai_cevap_al(komut, gorsel_verisi=None):
-    modeller = ['gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-pro']
+    modeller = ['gemini-1.5-flash', 'gemini-pro']
     son_hata = ""
     for m_adi in modeller:
         try:
@@ -238,7 +238,8 @@ with tab2:
 
         elif kart.get('tip') == 'gramer':
             st.markdown(f"<h1 style='text-align: center; color: #ff4b4b; margin-top: 20px;'>{kart['korece']}</h1>", unsafe_allow_html=True)
-            st.audio(ses_olustur(kart['korece']), format="audio/mp3")
+            ses_bytes = ses_olustur(kart['korece'])
+            st.audio(ses_bytes, format="audio/mp3")
             st.markdown("<p style='text-align: center; font-weight: bold; color: gray;'>[Gramer / Dilbilgisi]</p>", unsafe_allow_html=True)
             st.info(f"**Anlamı:** {kart['tr']}\n\n**Örnek:** {kart['ornek_ko']} ({kart['ornek_tr']})")
             
@@ -305,7 +306,8 @@ with tab2:
                     st.markdown("<p style='text-align: center; color: #ff8c00; font-weight: bold;'>🔥 Zor Kelime</p>", unsafe_allow_html=True)
                 
                 st.markdown(f"<h1 style='text-align: center; font-size: 3em; color: #2e7bcf; margin-top: 10px;'>{kart['korece']}</h1>", unsafe_allow_html=True)
-                st.audio(ses_olustur(kart['korece']), format="audio/mp3")
+                ses_bytes = ses_olustur(kart['korece'])
+                st.audio(ses_bytes, format="audio/mp3")
                 
                 if not st.session_state.kart_arkasi:
                     col1, col2, col3, col4 = st.columns(4)
@@ -344,7 +346,8 @@ with tab2:
                     st.markdown(f"<h3 style='text-align: center;'>🇹🇷 {kart['tr']}</h3>", unsafe_allow_html=True)
                     st.markdown(f"<h4 style='text-align: center; color: gray;'>🇬🇧 {kart['en']}</h4>", unsafe_allow_html=True)
                     st.info(f"**Örnek Cümle:** {kart['ornek_ko']}\n\n**Çeviri:** {kart['ornek_tr']}")
-                    st.audio(ses_olustur(kart['ornek_ko']), format="audio/mp3")
+                    ses_bytes_ornek = ses_olustur(kart['ornek_ko'])
+                    st.audio(ses_bytes_ornek, format="audio/mp3")
                     
                     if st.session_state.arkayuz_modu == 'emin_degilim':
                         st.markdown("<p style='text-align: center; color: gray;'>Şimdi karar ver: Anlamını doğru tahmin etmiş miydin?</p>", unsafe_allow_html=True)
@@ -420,7 +423,7 @@ with tab4:
     
     if len(dikte_havuzu) == 0:
         if len(tum_kelimeler) > 0:
-            st.success("🎉 Harika! Tüm kelimeler uzun süreli hafızana yerleşmiş durumda. Şu an dikte yapılacak taze kelime yok.")
+            st.success("🎉 Harika! Tüm kelimeler uzun süreli hafızama yerleşmiş durumda. Şu an dikte yapılacak taze kelime yok.")
         else:
             st.info("Pratik yapacak kelime yok.")
     else:
@@ -432,9 +435,7 @@ with tab4:
         st.info("Aşağıdaki sesi dinle ve duyduğun Korece kelimeyi yaz.")
         
         ses_bytes = ses_olustur(kart['korece'])
-        b64 = base64.b64encode(ses_bytes).decode()
-        ses_html = f'<audio id="audio_dikte_{st.session_state.yazma_id}" controls loop><source src="data:audio/mp3;base64,{b64}" type="audio/mp3"></audio>'
-        st.markdown(ses_html, unsafe_allow_html=True)
+        st.audio(ses_bytes, format="audio/mp3", loop=True)
         
         cevap = st.text_input("Duyduğun kelimeyi yaz:", key=f"dikte_input_{st.session_state.yazma_id}")
         
