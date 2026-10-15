@@ -4,6 +4,8 @@ import pandas as pd
 import json
 import random
 import gspread
+import io
+from gtts import gTTS
 from google.oauth2.service_account import Credentials
 from datetime import datetime, timedelta
 
@@ -15,7 +17,6 @@ GCP_JSON = json.loads(st.secrets["GCP_JSON"])
 genai.configure(api_key=GOOGLE_API_KEY)
 model = genai.GenerativeModel('gemini-3-flash-preview', generation_config={"temperature": 0.0})
 
-# Google Sheets Bağlantısı
 scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
 creds = Credentials.from_service_account_info(GCP_JSON, scopes=scopes)
 gc = gspread.authorize(creds)
@@ -23,13 +24,19 @@ sheet = gc.open_by_url(SHEET_URL).sheet1
 
 st.set_page_config(page_title="MEYRA", layout="centered")
 
-# --- VERİTABANI SENKRONİZASYON FONKSİYONU ---
+# --- YARDIMCI FONKSİYONLAR ---
 def veritabani_guncelle():
     tum_veriler = st.session_state.kelimeler + st.session_state.calisilmis
     if tum_veriler:
         df = pd.DataFrame(tum_veriler)
         sheet.clear()
         sheet.update([df.columns.values.tolist()] + df.values.tolist())
+
+def ses_olustur(metin):
+    tts = gTTS(text=metin, lang='ko')
+    fp = io.BytesIO()
+    tts.write_to_fp(fp)
+    return fp.getvalue()
 
 # --- UYGULAMA HAFIZASI VE ANKI ALTYAPISI ---
 if 'veri_yuklendi' not in st.session_state:
@@ -64,7 +71,7 @@ if 'veri_yuklendi' not in st.session_state:
 
 topik_4_gramerler = ["-아/어 보이다", "-(으)ㄹ 뿐만 아니라", "-(으)ㄴ/는 데다가", "-기 마련이다", "-(으)ㄴ/는 척하다", "-(으)ㄹ 뻔하다", "-느라고"]
 
-# --- ARAYÜZ (SEKMELER) ---
+# --- ARAYÜZ ---
 tab1, tab2, tab3 = st.tabs(["📂 1. Yükle", "🧠 2. Çalışma Modu", "⚙️ 3. Düzenle"])
 
 with tab1:
@@ -76,23 +83,24 @@ with tab1:
     
     if gorsel is not None:
         if st.button("Analiz Et ve Desteye Ekle"):
-            with st.spinner("Öğretmen Meyra için notları analiz ediyor..."):
+            with st.spinner("Öğretmen notları analiz ediyor..."):
                 try:
                     gorsel_verisi = [{"mime_type": "image/jpeg", "data": gorsel.getvalue()}]
+                    # AI'dan is_hard vb. parametreleri üretmesi komutunu tamamen kaldırdık.
                     komut = """
 GÖREVİN: KATI BİR VERİ ÇIKARICISI OLMAKTIR. 
 Görseldeki Korece kelimeleri, el yazısı notları ve dilbilgisi kurallarını çıkar.
 
-KURALLAR (MEYRA'NIN NOT ALMA STİLİ):
+KURALLAR:
 1. ALTI ÇİZİLİ KELİMELER: Unutulan kelimelerdir. KESİNLİKLE LİSTEYE EKLE.
 2. ZIT ANLAMLILAR (X İŞARETİ): "가다 x 오다" gibi arasına 'x' koyulmuş kelimeler zıt anlamlıdır. "tr" kısmına "Anlamı (Zıt Anlamlısı: [Diğer Kelime])" yaz.
-3. GRAMER KURALLARI: Yeni dilbilgisi kalıplarını çıkar ve "tip" değerini "gramer" yap. Gramer kuralının başına mutlaka tire (-) koy (Örn: -아/어야 하다).
+3. GRAMER KURALLARI: Yeni dilbilgisi kalıplarını çıkar ve "tip" değerini "gramer" yap. Başına tire (-) koy.
 4. KELİMELER: Gramer dışındakilerin "tip" değerini "kelime" yap. Sadece TOPIK 4+ kelimeleri al. Eşanlamlıları virgülle tek satırda birleştir.
-5. ÖRNEK CÜMLELER (ÇOK ÖNEMLİ): 
-   A) İLK TERCİH: Eğer kelime veya gramer, sayfa üzerinde TAM BİR CÜMLE içinde kullanılmışsa, KESİNLİKLE o orijinal cümleyi al.
-   B) İKİNCİ TERCİH: Kitapta cümle yoksa kendin üret. Üretirken özneler HER ZAMAN ünlü kişiler (아인슈타인 vb.) olmalı ve cümle içinde Korece sayma kelimeleri (개, 명 등) ile rakamlar bulunmalı.
+5. ÖRNEK CÜMLELER: 
+   A) İLK TERCİH: Kelime veya gramer sayfa üzerinde TAM BİR CÜMLE içinde kullanılmışsa, KESİNLİKLE o orijinal cümleyi al.
+   B) İKİNCİ TERCİH: Kendin üreteceksen özneler HER ZAMAN ünlü kişiler olmalı ve içinde Korece sayma kelimeleri (개, 명 등) ile rakamlar bulunmalı.
 6. JSON formatı:
-[{"tip": "kelime/gramer", "korece": "hedef metin", "tr": "Türkçe", "en": "İngilizce", "ornek_ko": "Örnek cümle", "ornek_tr": "Çevirisi", "is_hard": false, "hard_streak": 0, "interval": 1, "ease": 2.5, "next_review": ""}]
+[{"tip": "kelime/gramer", "korece": "hedef metin", "tr": "Türkçe", "en": "İngilizce", "ornek_ko": "Örnek cümle", "ornek_tr": "Çevirisi"}]
 """
                     cevap = model.generate_content([komut, gorsel_verisi[0]])
                     json_metni = cevap.text.strip().replace("```json", "").replace("```", "")
@@ -106,9 +114,14 @@ KURALLAR (MEYRA'NIN NOT ALMA STİLİ):
                         korece_temiz = k['korece'].strip()
                         if korece_temiz not in mevcut_korece:
                             k['korece'] = korece_temiz
+                            # AI yerine Python ile sistemsel değerleri varsayılan olarak atıyoruz.
+                            k['is_hard'] = False 
+                            k['hard_streak'] = 0
+                            k['interval'] = 1
+                            k['ease'] = 2.5
                             k['next_review'] = bugun
                             yeni_maddeler.append(k)
-                            mevcut_korece.add(korece_temiz) # Aynı sayfa içinde mükerrer çıkarmayı önler
+                            mevcut_korece.add(korece_temiz)
                     
                     st.session_state.kelimeler.extend(yeni_maddeler)
                     veritabani_guncelle()
@@ -168,7 +181,7 @@ with tab2:
             if st.button("Öğretmene Gönder", use_container_width=True):
                 if kullanici_cumlesi:
                     with st.spinner("Öğretmen cümleni okuyor..."):
-                        geribildirim_komutu = f"Senin adın AI Öğretmen. Karşındaki öğrencinin adı Meyra. Onunla arkadaşça, samimi ve sen diliyle konuş (Örn: 'Harikasın Meyra!'). Asla 3. şahıs kelimeler kullanma. Meyra şu kelimeyi: '{kart['korece']}' ve şu grameri: '{st.session_state.secilen_gramer}' kullanarak şu cümleyi kurdu: '{kullanici_cumlesi}'. Cümle doğru mu? Hata varsa doğrudan ona açıklayarak düzelt."
+                        geribildirim_komutu = f"Senin adın AI Öğretmen. Öğrencinin adı Meyra. Onunla samimi, sen diliyle konuş. Meyra '{kart['korece']}' kelimesini ve '{st.session_state.secilen_gramer}' gramerini kullanarak şu cümleyi kurdu: '{kullanici_cumlesi}'. Cümle doğru mu? Hata varsa doğrudan ona açıklayarak düzelt."
                         cevap = model.generate_content(geribildirim_komutu)
                         st.session_state.gramer_feedback = cevap.text
             
@@ -194,6 +207,7 @@ with tab2:
 
         elif kart.get('tip') == 'gramer':
             st.markdown(f"<h1 style='text-align: center; color: #ff4b4b; margin-top: 20px;'>{kart['korece']}</h1>", unsafe_allow_html=True)
+            st.audio(ses_olustur(kart['korece']), format='audio/mp3') # Ses Eklentisi
             st.markdown("<p style='text-align: center; font-weight: bold; color: gray;'>[Gramer / Dilbilgisi]</p>", unsafe_allow_html=True)
             st.info(f"**Anlamı:** {kart['tr']}\n\n**Örnek:** {kart['ornek_ko']} ({kart['ornek_tr']})")
             
@@ -202,7 +216,7 @@ with tab2:
             if st.button("Cümlemi Kontrol Et", use_container_width=True):
                 if kullanici_cumlesi:
                     with st.spinner("Öğretmen cümleni inceliyor..."):
-                        geribildirim_komutu = f"Senin adın AI Öğretmen. Öğrencinin adı Meyra. Onunla arkadaşça ve sen diliyle konuş (Örn: 'Harikasın Meyra!'). Meyra '{kart['korece']}' gramerini kullanarak şu cümleyi kurdu: '{kullanici_cumlesi}'. Cümle doğru mu? Hata varsa doğrudan Meyra'ya hitap ederek düzelt."
+                        geribildirim_komutu = f"Senin adın AI Öğretmen. Öğrencinin adı Meyra. Onunla arkadaşça ve sen diliyle konuş. Meyra '{kart['korece']}' gramerini kullanarak şu cümleyi kurdu: '{kullanici_cumlesi}'. Cümle doğru mu? Hata varsa doğrudan Meyra'ya hitap ederek düzelt."
                         cevap = model.generate_content(geribildirim_komutu)
                         st.session_state.gramer_feedback = cevap.text
             
@@ -259,7 +273,7 @@ with tab2:
                     st.markdown("<p style='text-align: center; color: #ff8c00; font-weight: bold;'>🔥 Zor Kelime</p>", unsafe_allow_html=True)
                 
                 st.markdown(f"<h1 style='text-align: center; font-size: 3em; color: #2e7bcf; margin-top: 10px;'>{kart['korece']}</h1>", unsafe_allow_html=True)
-                st.markdown("<br>", unsafe_allow_html=True)
+                st.audio(ses_olustur(kart['korece']), format='audio/mp3') # Ses Eklentisi
                 
                 if not st.session_state.kart_arkasi:
                     col1, col2, col3 = st.columns(3)
@@ -291,6 +305,7 @@ with tab2:
                     st.markdown(f"<h3 style='text-align: center;'>🇹🇷 {kart['tr']}</h3>", unsafe_allow_html=True)
                     st.markdown(f"<h4 style='text-align: center; color: gray;'>🇬🇧 {kart['en']}</h4>", unsafe_allow_html=True)
                     st.info(f"**Örnek Cümle:** {kart['ornek_ko']}\n\n**Çeviri:** {kart['ornek_tr']}")
+                    st.audio(ses_olustur(kart['ornek_ko']), format='audio/mp3') # Örnek Cümle Ses Eklentisi
                     
                     if st.button("Destenin Sonuna Ekle ve Devam Et", use_container_width=True):
                         islem_karti = st.session_state.kelimeler.pop(0)
