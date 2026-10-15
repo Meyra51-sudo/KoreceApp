@@ -18,8 +18,8 @@ SHEET_URL = st.secrets["SHEET_URL"]
 GCP_JSON = json.loads(st.secrets["GCP_JSON"])
 
 genai.configure(api_key=GOOGLE_API_KEY)
-# 404 ve Kota hatasını önleyen en stabil model:
-model = genai.GenerativeModel('gemini-1.5-pro', generation_config={"temperature": 0.0})
+# Hem kotayı doldurmayan hem de 404 hatası vermeyen en stabil güncel model
+model = genai.GenerativeModel('gemini-1.5-flash', generation_config={"temperature": 0.0})
 
 scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
 creds = Credentials.from_service_account_info(GCP_JSON, scopes=scopes)
@@ -71,7 +71,7 @@ if 'veri_yuklendi' not in st.session_state:
     st.session_state.zor_pratik_modu = False
     st.session_state.secilen_gramer = ""
     st.session_state.yazma_karti = None
-    st.session_state.yazma_id = random.randint(1000, 9999)
+    st.session_state.yazma_id = random.randint(10000, 99999) # Ses oynatıcısını sıfırlamak için
     st.session_state.gunluk_mesaj = random.choice([
         "오늘 너무 예뻐요!", "포기하지 마세요!", "오늘도 화이팅!", "한국어 천재 메이라!", "할 수 있어요!"
     ])
@@ -224,7 +224,8 @@ with tab2:
             st.markdown(f"<h1 style='text-align: center; color: #ff4b4b; margin-top: 20px;'>{kart['korece']}</h1>", unsafe_allow_html=True)
             ses_bytes = ses_olustur(kart['korece'])
             b64 = base64.b64encode(ses_bytes).decode()
-            st.markdown(f'<audio controls src="data:audio/mp3;base64,{b64}"></audio>', unsafe_allow_html=True)
+            # Dinamik ID ile takılmayı önlüyoruz
+            st.markdown(f'<audio id="audio_gramer_{st.session_state.yazma_id}" controls src="data:audio/mp3;base64,{b64}"></audio>', unsafe_allow_html=True)
             st.markdown("<p style='text-align: center; font-weight: bold; color: gray;'>[Gramer / Dilbilgisi]</p>", unsafe_allow_html=True)
             st.info(f"**Anlamı:** {kart['tr']}\n\n**Örnek:** {kart['ornek_ko']} ({kart['ornek_tr']})")
             
@@ -249,6 +250,7 @@ with tab2:
                         st.session_state.kelimeler.append(islem_karti)
                         st.session_state.gecmis.append({'kelime': islem_karti, 'islem': 'gramer_tekrar'})
                         st.session_state.gramer_feedback = None
+                        st.session_state.yazma_id = random.randint(10000, 99999)
                         veritabani_guncelle()
                         st.rerun()
                 with col2:
@@ -260,6 +262,7 @@ with tab2:
                         st.session_state.calisilmis.append(islem_karti)
                         st.session_state.gecmis.append({'kelime': islem_karti, 'islem': 'bildim'})
                         st.session_state.gramer_feedback = None
+                        st.session_state.yazma_id = random.randint(10000, 99999)
                         veritabani_guncelle()
                         st.rerun()
 
@@ -290,7 +293,7 @@ with tab2:
                 st.markdown(f"<h1 style='text-align: center; font-size: 3em; color: #2e7bcf; margin-top: 10px;'>{kart['korece']}</h1>", unsafe_allow_html=True)
                 ses_bytes = ses_olustur(kart['korece'])
                 b64 = base64.b64encode(ses_bytes).decode()
-                st.markdown(f'<audio controls src="data:audio/mp3;base64,{b64}"></audio>', unsafe_allow_html=True)
+                st.markdown(f'<audio id="audio_kelime_{st.session_state.yazma_id}" controls src="data:audio/mp3;base64,{b64}"></audio>', unsafe_allow_html=True)
                 
                 if not st.session_state.kart_arkasi:
                     col1, col2, col3, col4 = st.columns(4)
@@ -322,6 +325,7 @@ with tab2:
                             st.session_state.calisilmis.append(islem_karti)
                             st.session_state.gecmis.append({'kelime': islem_karti, 'islem': 'bildim'})
                             st.session_state.kart_arkasi = False
+                            st.session_state.yazma_id = random.randint(10000, 99999)
                             veritabani_guncelle()
                             st.rerun()
                 else:
@@ -341,6 +345,7 @@ with tab2:
                                 st.session_state.kelimeler.append(islem_karti) 
                                 st.session_state.gecmis.append({'kelime': islem_karti, 'islem': 'bilemedim'})
                                 st.session_state.kart_arkasi = False
+                                st.session_state.yazma_id = random.randint(10000, 99999)
                                 veritabani_guncelle()
                                 st.rerun()
                         with colB:
@@ -352,6 +357,7 @@ with tab2:
                                 st.session_state.calisilmis.append(islem_karti)
                                 st.session_state.gecmis.append({'kelime': islem_karti, 'islem': 'bildim'})
                                 st.session_state.kart_arkasi = False
+                                st.session_state.yazma_id = random.randint(10000, 99999)
                                 veritabani_guncelle()
                                 st.rerun()
                     else:
@@ -360,6 +366,7 @@ with tab2:
                             st.session_state.kelimeler.append(islem_karti) 
                             st.session_state.gecmis.append({'kelime': islem_karti, 'islem': 'bilemedim'})
                             st.session_state.kart_arkasi = False
+                            st.session_state.yazma_id = random.randint(10000, 99999)
                             veritabani_guncelle()
                             st.rerun()
 
@@ -401,14 +408,16 @@ with tab4:
     else:
         if st.session_state.get('yazma_karti') is None or st.session_state.yazma_karti not in tum_kelimeler:
             st.session_state.yazma_karti = random.choice(tum_kelimeler)
-            st.session_state.yazma_id = random.randint(1000, 9999)
+            st.session_state.yazma_id = random.randint(10000, 99999)
             
         kart = st.session_state.yazma_karti
         st.info("Aşağıdaki sesi dinle ve duyduğun Korece kelimeyi yaz.")
         
         ses_bytes = ses_olustur(kart['korece'])
         b64 = base64.b64encode(ses_bytes).decode()
-        ses_html = f'<audio controls loop><source src="data:audio/mp3;base64,{b64}" type="audio/mp3"></audio>'
+        
+        # Oynatıcı kimliğini her kelimede tamamen benzersiz yapıyoruz
+        ses_html = f'<audio id="audio_dikte_{st.session_state.yazma_id}" controls loop><source src="data:audio/mp3;base64,{b64}" type="audio/mp3"></audio>'
         st.markdown(ses_html, unsafe_allow_html=True)
         
         cevap = st.text_input("Duyduğun kelimeyi yaz:", key=f"dikte_input_{st.session_state.yazma_id}")
@@ -423,5 +432,5 @@ with tab4:
         with col2:
             if st.button("Başka Kelimeye Geç", use_container_width=True):
                 st.session_state.yazma_karti = random.choice(tum_kelimeler)
-                st.session_state.yazma_id = random.randint(1000, 9999)
+                st.session_state.yazma_id = random.randint(10000, 99999)
                 st.rerun()
