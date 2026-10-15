@@ -27,9 +27,9 @@ st.set_page_config(page_title="MEYRA", layout="centered")
 
 # --- YARDIMCI FONKSİYONLAR ---
 
-# Yapay Zeka Çökme Önleyici (Yedekli Model Sistemi)
+# Güncel ve kararlı model (gemini-2.5-flash) ile güvenli AI çağrısı
 def ai_cevap_al(komut, gorsel_verisi=None):
-    modeller = ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-pro', 'gemini-1.0-pro']
+    modeller = ['gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-pro']
     son_hata = ""
     for m_adi in modeller:
         try:
@@ -41,8 +41,8 @@ def ai_cevap_al(komut, gorsel_verisi=None):
             return cevap.text
         except Exception as e:
             son_hata = str(e)
-            continue # Hata verirse çökmek yerine listedeki diğer modele geçer
-    raise Exception(f"Sistem meşgul veya API hatası. Lütfen biraz bekleyip tekrar dene. (Detay: {son_hata})")
+            continue
+    raise Exception(f"API bağlantı hatası: {son_hata}")
 
 def veritabani_guncelle():
     tum_veriler = st.session_state.kelimeler + st.session_state.calisilmis
@@ -134,7 +134,6 @@ KURALLAR:
 5. ÖRNEK CÜMLELER: Kitaptaki orijinal cümleyi al. Yoksa ünlü özneli ve sayma kelimeli cümle üret.
 6. JSON formatı: [{"tip": "kelime/gramer", "korece": "metin", "tr": "Türkçe", "en": "İngilizce", "ornek_ko": "Örnek cümle", "ornek_tr": "Çeviri"}]
 """
-                    # Çökme önleyici yedekli fonksiyon çağrılır
                     json_metni = ai_cevap_al(komut, gorsel_verisi)
                     json_metni = json_metni.strip().replace("```json", "").replace("```", "")
                     veriler = json.loads(json_metni)
@@ -417,12 +416,11 @@ with tab4:
     st.header("✍️ Yazma Pratiği (받아쓰기)")
     tum_kelimeler = [k for k in (st.session_state.calisilmis + st.session_state.kelimeler) if k.get('tip') == 'kelime']
     
-    # Yeni Mezuniyet Kuralı: Sadece interval değeri 21'den küçük olanlar Dikte modunda sorulur
     dikte_havuzu = [k for k in tum_kelimeler if float(k.get('interval', 1)) < 21]
     
     if len(dikte_havuzu) == 0:
         if len(tum_kelimeler) > 0:
-            st.success("🎉 Harika! Tüm kelimeler uzun süreli hafızana yerleşmiş durumda. Şu an dikte yapılacak taze/yeni kelime yok.")
+            st.success("🎉 Harika! Tüm kelimeler uzun süreli hafızana yerleşmiş durumda. Şu an dikte yapılacak taze kelime yok.")
         else:
             st.info("Pratik yapacak kelime yok.")
     else:
@@ -433,8 +431,10 @@ with tab4:
         kart = st.session_state.yazma_karti
         st.info("Aşağıdaki sesi dinle ve duyduğun Korece kelimeyi yaz.")
         
-        # Native st.audio ile tamamen güvenli loop (Hayalet sesi engeller)
-        st.audio(ses_olustur(kart['korece']), format="audio/mp3", loop=True)
+        ses_bytes = ses_olustur(kart['korece'])
+        b64 = base64.b64encode(ses_bytes).decode()
+        ses_html = f'<audio id="audio_dikte_{st.session_state.yazma_id}" controls loop><source src="data:audio/mp3;base64,{b64}" type="audio/mp3"></audio>'
+        st.markdown(ses_html, unsafe_allow_html=True)
         
         cevap = st.text_input("Duyduğun kelimeyi yaz:", key=f"dikte_input_{st.session_state.yazma_id}")
         
