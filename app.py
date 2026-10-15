@@ -29,20 +29,22 @@ st.set_page_config(page_title="MEYRA", layout="centered")
 # --- YARDIMCI FONKSİYONLAR ---
 
 def ai_cevap_al(komut, gorsel_verisi=None):
-    modeller = ['gemini-1.5-flash', 'gemini-pro']
-    son_hata = ""
-    for m_adi in modeller:
-        try:
-            m = genai.GenerativeModel(m_adi, generation_config={"temperature": 0.0})
-            if gorsel_verisi:
-                cevap = m.generate_content([komut, gorsel_verisi])
-            else:
-                cevap = m.generate_content(komut)
-            return cevap.text
-        except Exception as e:
-            son_hata = str(e)
-            continue
-    raise Exception(f"API bağlantı hatası: {son_hata}")
+    # Google'ın en güncel ve aktif modeli
+    try:
+        m = genai.GenerativeModel('gemini-2.5-flash', generation_config={"temperature": 0.0})
+        if gorsel_verisi:
+            cevap = m.generate_content([komut, gorsel_verisi])
+        else:
+            cevap = m.generate_content(komut)
+        return cevap.text
+    except Exception as e:
+        # Alternatif olarak doğrudan gemini-flash deneyelim
+        m_alt = genai.GenerativeModel('gemini-flash', generation_config={"temperature": 0.0})
+        if gorsel_verisi:
+            cevap = m_alt.generate_content([komut, gorsel_verisi])
+        else:
+            cevap = m_alt.generate_content(komut)
+        return cevap.text
 
 def veritabani_guncelle():
     tum_veriler = st.session_state.kelimeler + st.session_state.calisilmis
@@ -345,7 +347,7 @@ with tab2:
                 else:
                     st.markdown(f"<h3 style='text-align: center;'>🇹🇷 {kart['tr']}</h3>", unsafe_allow_html=True)
                     st.markdown(f"<h4 style='text-align: center; color: gray;'>🇬🇧 {kart['en']}</h4>", unsafe_allow_html=True)
-                    st.info(f"**Örnek Cümle:** {kart['ornek_ko']}\n\n**Çeviri:** {kart['ornek_tr']}")
+                    st.info(f"**Örnek Cümle:** {kart['ornek_ko']} ({kart['ornek_tr']})")
                     ses_bytes_ornek = ses_olustur(kart['ornek_ko'])
                     st.audio(ses_bytes_ornek, format="audio/mp3")
                     
@@ -417,13 +419,13 @@ with tab3:
 
 with tab4:
     st.header("✍️ Yazma Pratiği (받아쓰기)")
-    tum_kelimeler = [k for k in (st.session_state.calisilmis + st.session_state.kelimeler) if k.get('tip') == 'kelime']
+    tum_kelimeler = [k for k in (st.session_state.calisilmis + st.session_state.kelimeler) if k.get('tip'] == 'kelime']
     
     dikte_havuzu = [k for k in tum_kelimeler if float(k.get('interval', 1)) < 21]
     
     if len(dikte_havuzu) == 0:
         if len(tum_kelimeler) > 0:
-            st.success("🎉 Harika! Tüm kelimeler uzun süreli hafızama yerleşmiş durumda. Şu an dikte yapılacak taze kelime yok.")
+            st.success("🎉 Harika! Tüm kelimeler uzun süreli hafızana yerleşmiş durumda. Şu an dikte yapılacak taze kelime yok.")
         else:
             st.info("Pratik yapacak kelime yok.")
     else:
