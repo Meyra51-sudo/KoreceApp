@@ -396,4 +396,26 @@ with tab4:
     else:
         # Sadece "Başka Kelimeye Geç" tıklandığında veya ilk girişte kelime seç
         if st.session_state.get('yazma_karti') is None:
-            st.session_state.yazma_karti = random.choice(tum_kel
+            st.session_state.yazma_karti = random.choice(tum_kelimeler)
+            st.session_state.yazma_id = random.randint(10000, 99999)
+            
+        kart = st.session_state.yazma_karti
+        st.info("Aşağıdaki sesi dinle ve duyduğun Korece kelimeyi yaz.")
+        
+        # Native st.audio ile tamamen güvenli loop
+        st.audio(ses_olustur(kart['korece']), format="audio/mp3", loop=True)
+        
+        cevap = st.text_input("Duyduğun kelimeyi yaz:", key=f"dikte_input_{st.session_state.yazma_id}")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("Kontrol Et", use_container_width=True):
+                if temiz_karsilastir(cevap, kart['korece']):
+                    st.success("Doğru! Harikasın 메이라!")
+                else:
+                    st.error(f"Yanlış. Doğrusu: '{kart['korece']}' olmalıydı.")
+        with col2:
+            if st.button("Başka Kelimeye Geç", use_container_width=True):
+                st.session_state.yazma_karti = random.choice(tum_kelimeler)
+                st.session_state.yazma_id = random.randint(10000, 99999)
+                st.rerun()
