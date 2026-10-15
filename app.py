@@ -26,24 +26,20 @@ sheet = gc.open_by_url(SHEET_URL).sheet1
 
 st.set_page_config(page_title="MEYRA", layout="centered")
 
-# --- YARDIMCI FONKSİYONLAR ---
-
+# --- YARDIMCI FONKSİYONLAR (404'ü Kökten Çözen Dinamik Bağlantı) ---
 def ai_cevap_al(komut, gorsel_verisi=None):
-    # Google SDK üzerinden o an aktif olan modeli dinamik ve hatasız olarak yakalar
-    aktif_model = None
+    # Sabit model adı yazmak yerine Google'ın listesindeki ilk çalışan flash/pro modelini otomatik seçer
+    aktif_model_adi = "gemini-1.5-flash"
     try:
         for m in genai.list_models():
             if 'generateContent' in m.supported_generation_methods:
-                if 'flash' in m.name.lower() or 'pro' in m.name.lower():
-                    aktif_model = m.name
+                if 'flash' in m.name.lower():
+                    aktif_model_adi = m.name
                     break
     except:
         pass
         
-    if not aktif_model:
-        aktif_model = 'gemini-1.5-flash'
-        
-    model = genai.GenerativeModel(aktif_model, generation_config={"temperature": 0.0})
+    model = genai.GenerativeModel(aktif_model_adi, generation_config={"temperature": 0.0})
     if gorsel_verisi:
         cevap = model.generate_content([komut, gorsel_verisi])
     else:
@@ -79,7 +75,7 @@ def ses_olustur(metin):
         return audio_data
     return asyncio.run(_amain())
 
-# --- GENİŞ MOTİVASYON HAVUZU (150+ Cümle) ---
+# --- GENİŞ MOTİVASYON HAVUZU ---
 motivasyon_cumleleri = [
     "오늘 너무 예뻐요!", "포기하지 마세요!", "오늘도 화이팅!", "한국어 천재 메이라!", "할 수 있어요!",
     "작은 진전이 큰 결과를 만듭니다.", "매일 조금씩 발전하고 있어요.", "꿈을 향해 멈추지 말고 달려가세요.",
