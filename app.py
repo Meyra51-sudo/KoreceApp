@@ -5,7 +5,9 @@ import json
 import random
 import gspread
 import io
-from gtts import gTTS
+import base64
+import asyncio
+import edge_tts
 from google.oauth2.service_account import Credentials
 from datetime import datetime, timedelta
 
@@ -32,22 +34,28 @@ def veritabani_guncelle():
         sheet.clear()
         sheet.update([df.columns.values.tolist()] + df.values.tolist())
 
+# Gerçekçi Kadın Sesi (SunHi)
 def ses_olustur(metin):
-    tts = gTTS(text=metin, lang='ko')
-    fp = io.BytesIO()
-    tts.write_to_fp(fp)
-    return fp.getvalue()
+    async def _amain():
+        communicate = edge_tts.Communicate(metin, "ko-KR-SunHiNeural")
+        audio_data = b""
+        async for chunk in communicate.stream():
+            if chunk["type"] == "audio":
+                audio_data += chunk["data"]
+        return audio_data
+    return asyncio.run(_amain())
 
-# --- UYGULAMA HAFIZASI VE ANKI ALTYAPISI ---
+# --- UYGULAMA HAFIZASI ---
 if 'veri_yuklendi' not in st.session_state:
     st.session_state.kelimeler = []
     st.session_state.calisilmis = []
     st.session_state.gecmis = []
     st.session_state.kart_arkasi = False
-    st.session_state.arkayuz_modu = 'bilemedim' # 'bilemedim' veya 'emin_degilim'
+    st.session_state.arkayuz_modu = 'bilemedim' 
     st.session_state.gramer_feedback = None
     st.session_state.zor_pratik_modu = False
     st.session_state.secilen_gramer = ""
+    st.session_state.yazma_karti = None
     st.session_state.gunluk_mesaj = random.choice([
         "오늘 너무 예뻐요!", "포기하지 마세요!", "오늘도 화이팅!", "한국어 천재 메이라!", "할 수 있어요!"
     ])
@@ -73,67 +81,61 @@ if 'veri_yuklendi' not in st.session_state:
 topik_4_gramerler = ["-아/어 보이다", "-(으)ㄹ 뿐만 아니라", "-(으)ㄴ/는 데다가", "-기 마련이다", "-(으)ㄴ/는 척하다", "-(으)ㄹ 뻔하다", "-느라고"]
 
 # --- ARAYÜZ ---
-tab1, tab2, tab3 = st.tabs(["📂 1. Yükle", "🧠 2. Çalışma Modu", "⚙️ 3. Düzenle"])
+tab1, tab2, tab3, tab4 = st.tabs(["📂 1. Yükle", "🧠 2. Çalışma Modu", "⚙️ 3. Düzenle", "✍️ 4. Yazma Modu"])
 
 with tab1:
-    st.markdown("<h2 style='text-align: center;'>Hoşgeldin 메이라</h2>", unsafe_allow_html=True)
+    st.markdown("<h2 style='text-align: center;'>반가워 메이라</h2>", unsafe_allow_html=True)
     st.markdown(f"<h4 style='text-align: center; color: #2e7bcf;'>{st.session_state.gunluk_mesaj}</h4>", unsafe_allow_html=True)
     st.markdown("---")
     
-    # accept_multiple_files=True eklendi
     yuklenen_dosyalar = st.file_uploader("Fotoğraf Çek veya Galeriden Seç (Birden fazla seçebilirsin)", type=["jpg", "jpeg", "png"], accept_multiple_files=True)
     
     if yuklenen_dosyalar:
         if st.button("Sayfaları Analiz Et ve Desteye Ekle"):
-            with st.spinner(f"Öğretmen {len(yuklenen_dosyalar)} sayfayı analiz ediyor..."):
+            with st.spinner(f"Öğretmen {len(yuklenen_dosyalar)} sayfayı tek seferde analiz ediyor..."):
                 try:
-                    yeni_eklenen_toplam = 0
-                    bugun = str(datetime.now().date())
-                    mevcut_korece = {k['korece'].strip() for k in st.session_state.kelimeler + st.session_state.calisilmis}
+                    # 429 Hatasını çözen Batching (Toplu İstek) Sistemi
+                    gorsel_verisi = [{"mime_type": "image/jpeg", "data": g.getvalue()} for g in yuklenen_dosyalar]
                     
-                    # Her bir fotoğrafı sırayla analiz etme döngüsü
-                    for gorsel in yuklenen_dosyalar:
-                        gorsel_verisi = [{"mime_type": "image/jpeg", "data": gorsel.getvalue()}]
-                        komut = """
-GÖREVİN: KATI BİR VERİ ÇIKARICISI OLMAKTIR. 
-Görseldeki Korece kelimeleri, el yazısı notları ve dilbilgisi kurallarını çıkar.
+                    komut = """
+GÖREVİN: KATI BİR VERİ ÇIKARICISI OLMAKTIR. Görseldeki Korece kelimeleri ve gramerleri çıkar.
 KURALLAR:
-1. ALTI ÇİZİLİ KELİMELER: Unutulan kelimelerdir. KESİNLİKLE LİSTEYE EKLE.
-2. ZIT ANLAMLILAR (X İŞARETİ): "가다 x 오다" gibi arasına 'x' koyulmuş kelimeler zıt anlamlıdır. "tr" kısmına "Anlamı (Zıt Anlamlısı: [Diğer Kelime])" yaz.
-3. GRAMER KURALLARI: Yeni dilbilgisi kalıplarını çıkar ve "tip" değerini "gramer" yap. Başına tire (-) koy.
-4. KELİMELER: Gramer dışındakilerin "tip" değerini "kelime" yap. Sadece TOPIK 4+ kelimeleri al. Eşanlamlıları virgülle tek satırda birleştir.
-5. ÖRNEK CÜMLELER: 
-   A) İLK TERCİH: Kelime veya gramer sayfa üzerinde TAM BİR CÜMLE içinde kullanılmışsa, KESİNLİKLE o orijinal cümleyi al.
-   B) İKİNCİ TERCİH: Kendin üreteceksen özneler HER ZAMAN ünlü kişiler olmalı ve içinde Korece sayma kelimeleri ile rakamlar bulunmalı.
-6. JSON formatı:
-[{"tip": "kelime/gramer", "korece": "hedef metin", "tr": "Türkçe", "en": "İngilizce", "ornek_ko": "Örnek cümle", "ornek_tr": "Çevirisi"}]
+1. ALTI ÇİZİLİ KELİMELER: Unutulan kelimelerdir. KESİNLİKLE EKLE.
+2. ZIT ANLAMLILAR: "가다 x 오다" gibi arasına 'x' koyulmuş kelimeler zıt anlamlıdır. "tr" kısmına "Anlamı (Zıt Anlamlısı: [Diğer Kelime])" yaz.
+3. GRAMER: Başına tire (-) koyarak "tip" değerini "gramer" yap.
+4. KELİMELER: "tip" değerini "kelime" yap. Sadece TOPIK 4+ al.
+5. ÖRNEK CÜMLELER: Kitaptaki orijinal cümleyi al. Yoksa ünlü özneli ve sayma kelimeli cümle üret.
+6. JSON formatı: [{"tip": "kelime/gramer", "korece": "metin", "tr": "Türkçe", "en": "İngilizce", "ornek_ko": "Örnek cümle", "ornek_tr": "Çeviri"}]
 """
-                        cevap = model.generate_content([komut, gorsel_verisi[0]])
-                        json_metni = cevap.text.strip().replace("```json", "").replace("```", "")
-                        veriler = json.loads(json_metni)
-                        
-                        yeni_maddeler = []
-                        for k in veriler:
-                            korece_temiz = k['korece'].strip()
-                            if korece_temiz not in mevcut_korece:
-                                k['korece'] = korece_temiz
-                                k['is_hard'] = False 
-                                k['hard_streak'] = 0
-                                k['interval'] = 1
-                                k['ease'] = 2.5
-                                k['next_review'] = bugun
-                                yeni_maddeler.append(k)
-                                mevcut_korece.add(korece_temiz)
-                        
-                        st.session_state.kelimeler.extend(yeni_maddeler)
-                        yeni_eklenen_toplam += len(yeni_maddeler)
+                    istek_icerigi = [komut] + gorsel_verisi
+                    cevap = model.generate_content(istek_icerigi)
+                    json_metni = cevap.text.strip().replace("```json", "").replace("```", "")
+                    veriler = json.loads(json_metni)
                     
+                    mevcut_korece = {k['korece'].strip() for k in st.session_state.kelimeler + st.session_state.calisilmis}
+                    yeni_maddeler = []
+                    bugun = str(datetime.now().date())
+                    
+                    for k in veriler:
+                        korece_temiz = k['korece'].strip()
+                        if korece_temiz not in mevcut_korece:
+                            k['korece'] = korece_temiz
+                            k['is_hard'] = False 
+                            k['hard_streak'] = 0
+                            k['interval'] = 1
+                            k['ease'] = 2.5
+                            k['next_review'] = bugun
+                            yeni_maddeler.append(k)
+                            mevcut_korece.add(korece_temiz)
+                    
+                    st.session_state.kelimeler.extend(yeni_maddeler)
                     veritabani_guncelle()
                     random.shuffle(st.session_state.kelimeler)
-                    st.success(f"Analiz tamamlandı! Toplam {yeni_eklenen_toplam} yeni madde desteye eklendi ve buluta kaydedildi.")
+                    st.success(f"Analiz tamamlandı! Toplam {len(yeni_maddeler)} yeni madde başarıyla eklendi.")
                     
                 except Exception as e:
                     st.error(f"Hata: {e}")
+
 with tab2:
     zor_kelime_sayisi = sum(1 for k in (st.session_state.kelimeler + st.session_state.calisilmis) if k.get('is_hard', False))
     toplam_ogrenilen = len(st.session_state.calisilmis)
@@ -148,7 +150,6 @@ with tab2:
     if len(st.session_state.gecmis) > 0 and not st.session_state.zor_pratik_modu and not st.session_state.gramer_feedback:
         if st.button("↩️ Son İşlemi Geri Al"):
             son_islem = st.session_state.gecmis.pop()
-            # ValueError hatasını önlemek için doğrudan listenin son elemanını siliyoruz
             if son_islem['islem'] == 'bildim':
                 st.session_state.calisilmis.pop() 
                 st.session_state.kelimeler.insert(0, son_islem['kelime'])
@@ -180,18 +181,16 @@ with tab2:
             st.info(f"**메이라, bu kelimeyi kullanarak bir cümle kur.**\n\n📌 **Görev:** Cümleyi kurarken **{st.session_state.secilen_gramer}** gramer kuralını da kullanmaya çalış!")
             
             kullanici_cumlesi = st.text_input("Korece cümleni buraya yaz:")
-            
             if st.button("Öğretmene Gönder", use_container_width=True):
                 if kullanici_cumlesi:
                     with st.spinner("Öğretmen cümleni okuyor..."):
-                        geribildirim_komutu = f"Senin adın AI Öğretmen. Öğrencinin adı Meyra. Onunla samimi, sen diliyle konuş. Meyra '{kart['korece']}' kelimesini ve '{st.session_state.secilen_gramer}' gramerini kullanarak şu cümleyi kurdu: '{kullanici_cumlesi}'. Cümle doğru mu? Hata varsa doğrudan ona açıklayarak düzelt."
+                        geribildirim_komutu = f"Adın AI Öğretmen. Öğrencinin adı Meyra. Samimi, sen diliyle konuş. Meyra '{kart['korece']}' kelimesini ve '{st.session_state.secilen_gramer}' gramerini kullanarak şu cümleyi kurdu: '{kullanici_cumlesi}'. Doğru mu? Hata varsa doğrudan açıkla."
                         cevap = model.generate_content(geribildirim_komutu)
                         st.session_state.gramer_feedback = cevap.text
             
             if st.session_state.gramer_feedback:
                 st.success("👩‍🏫 **Öğretmenin Geri Bildirimi:**")
                 st.write(st.session_state.gramer_feedback)
-                
                 if st.button("Devam Et", use_container_width=True):
                     kart['hard_streak'] = kart.get('hard_streak', 0) + 1
                     if kart['hard_streak'] >= 3:
@@ -210,23 +209,23 @@ with tab2:
 
         elif kart.get('tip') == 'gramer':
             st.markdown(f"<h1 style='text-align: center; color: #ff4b4b; margin-top: 20px;'>{kart['korece']}</h1>", unsafe_allow_html=True)
-            st.audio(ses_olustur(kart['korece']), format='audio/mp3') 
+            ses_bytes = ses_olustur(kart['korece'])
+            b64 = base64.b64encode(ses_bytes).decode()
+            st.markdown(f'<audio controls src="data:audio/mp3;base64,{b64}"></audio>', unsafe_allow_html=True)
             st.markdown("<p style='text-align: center; font-weight: bold; color: gray;'>[Gramer / Dilbilgisi]</p>", unsafe_allow_html=True)
             st.info(f"**Anlamı:** {kart['tr']}\n\n**Örnek:** {kart['ornek_ko']} ({kart['ornek_tr']})")
             
             kullanici_cumlesi = st.text_input("Bu grameri kullanarak kendi Korece cümleni kur 메이라:")
-            
             if st.button("Cümlemi Kontrol Et", use_container_width=True):
                 if kullanici_cumlesi:
                     with st.spinner("Öğretmen cümleni inceliyor..."):
-                        geribildirim_komutu = f"Senin adın AI Öğretmen. Öğrencinin adı Meyra. Onunla arkadaşça ve sen diliyle konuş. Meyra '{kart['korece']}' gramerini kullanarak şu cümleyi kurdu: '{kullanici_cumlesi}'. Cümle doğru mu? Hata varsa doğrudan Meyra'ya hitap ederek düzelt."
+                        geribildirim_komutu = f"Adın AI Öğretmen. Öğrencinin adı Meyra. Samimi ve sen diliyle konuş. Meyra '{kart['korece']}' gramerini kullanarak şu cümleyi kurdu: '{kullanici_cumlesi}'. Cümle doğru mu? Hata varsa doğrudan Meyra'ya hitap ederek düzelt."
                         cevap = model.generate_content(geribildirim_komutu)
                         st.session_state.gramer_feedback = cevap.text
             
             if st.session_state.gramer_feedback:
                 st.success("📝 **Öğretmenin Geri Bildirimi:**")
                 st.write(st.session_state.gramer_feedback)
-                
                 col1, col2 = st.columns(2)
                 with col1:
                     if st.button("❌ Tekrar Çalışmalıyım", use_container_width=True):
@@ -276,10 +275,11 @@ with tab2:
                     st.markdown("<p style='text-align: center; color: #ff8c00; font-weight: bold;'>🔥 Zor Kelime</p>", unsafe_allow_html=True)
                 
                 st.markdown(f"<h1 style='text-align: center; font-size: 3em; color: #2e7bcf; margin-top: 10px;'>{kart['korece']}</h1>", unsafe_allow_html=True)
-                st.audio(ses_olustur(kart['korece']), format='audio/mp3') 
+                ses_bytes = ses_olustur(kart['korece'])
+                b64 = base64.b64encode(ses_bytes).decode()
+                st.markdown(f'<audio controls src="data:audio/mp3;base64,{b64}"></audio>', unsafe_allow_html=True)
                 
                 if not st.session_state.kart_arkasi:
-                    # Yeni Tasarım: 4 Butonlu Ön Yüz
                     col1, col2, col3, col4 = st.columns(4)
                     with col1:
                         if st.button("❌ Bilemedim"):
@@ -291,7 +291,6 @@ with tab2:
                             st.rerun()
                     with col2:
                         if st.button("👀 Anlamı Gör"):
-                            # Puan düşürmeden sadece arkasını gösterir
                             st.session_state.kart_arkasi = True
                             st.session_state.arkayuz_modu = 'emin_degilim'
                             st.rerun()
@@ -316,14 +315,12 @@ with tab2:
                     st.markdown(f"<h3 style='text-align: center;'>🇹🇷 {kart['tr']}</h3>", unsafe_allow_html=True)
                     st.markdown(f"<h4 style='text-align: center; color: gray;'>🇬🇧 {kart['en']}</h4>", unsafe_allow_html=True)
                     st.info(f"**Örnek Cümle:** {kart['ornek_ko']}\n\n**Çeviri:** {kart['ornek_tr']}")
-                    st.audio(ses_olustur(kart['ornek_ko']), format='audio/mp3') 
                     
-                    # Arka yüz butonları (Anlamı Gör modundan gelindiyse karar butonları çıkar)
                     if st.session_state.arkayuz_modu == 'emin_degilim':
                         st.markdown("<p style='text-align: center; color: gray;'>Şimdi karar ver: Anlamını doğru tahmin etmiş miydin?</p>", unsafe_allow_html=True)
                         colA, colB = st.columns(2)
                         with colA:
-                            if st.button("❌ Hayır, bilmiyormuşum", use_container_width=True):
+                            if st.button("❌ Hayır, Bilmiyormuşum", use_container_width=True):
                                 kart['ease'] = max(1.3, kart.get('ease', 2.5) - 0.2)
                                 kart['interval'] = 1
                                 kart['next_review'] = str(bugun_tarihi)
@@ -334,7 +331,7 @@ with tab2:
                                 veritabani_guncelle()
                                 st.rerun()
                         with colB:
-                            if st.button("✅ Evet, biliyormuşum", use_container_width=True):
+                            if st.button("✅ Evet, Biliyordum", use_container_width=True):
                                 kart['ease'] = kart.get('ease', 2.5) + 0.1
                                 kart['interval'] = max(1, int(kart.get('interval', 1) * kart['ease']))
                                 kart['next_review'] = str(bugun_tarihi + timedelta(days=kart['interval']))
@@ -355,7 +352,6 @@ with tab2:
 
 with tab3:
     st.subheader("Veritabanını Düzenle")
-    
     tum_veriler = st.session_state.kelimeler + st.session_state.calisilmis
     if len(tum_veriler) == 0:
         st.info("Şu an veritabanında kelime yok.")
@@ -364,7 +360,6 @@ with tab3:
         duzenlenmis_df = st.data_editor(df, num_rows="dynamic", use_container_width=True, hide_index=True)
         if st.button("Değişiklikleri Google Sheets'e Kaydet", type="primary"):
             veriler_dict = duzenlenmis_df.to_dict('records')
-            
             yeni_kelimeler = []
             yeni_calisilmis = []
             bugun = datetime.now().date()
@@ -382,4 +377,55 @@ with tab3:
             st.session_state.kelimeler = yeni_kelimeler
             st.session_state.calisilmis = yeni_calisilmis
             veritabani_guncelle()
-            st.success("Tüm değişiklikler başarıyla Google Sheets'e kaydedildi!")
+            st.success("Değişiklikler başarıyla Google Sheets'e kaydedildi!")
+
+with tab4:
+    st.header("✍️ Yazma Pratiği (받아쓰기 & 빈칸 채우기)")
+    tum_kelimeler = [k for k in (st.session_state.calisilmis + st.session_state.kelimeler) if k.get('tip') == 'kelime']
+    
+    if len(tum_kelimeler) == 0:
+        st.info("Pratik yapacak kelime yok.")
+    else:
+        mod_secimi = st.radio("Çalışma Modu:", ["🎧 Dikte (Sürekli Çalan Ses)", "🧩 Bağlamsal Boşluk Doldurma"])
+        
+        if st.session_state.yazma_karti is None:
+            st.session_state.yazma_karti = random.choice(tum_kelimeler)
+            
+        kart = st.session_state.yazma_karti
+        
+        if mod_secimi == "🎧 Dikte (Sürekli Çalan Ses)":
+            st.info("Aşağıdaki sesi dinle ve duyduğun Korece kelimeyi yaz.")
+            ses_bytes = ses_olustur(kart['korece'])
+            b64 = base64.b64encode(ses_bytes).decode()
+            # loop ve autoplay komutlarıyla ses sürekli başa sararak çalar
+            ses_html = f'<audio controls loop autoplay><source src="data:audio/mp3;base64,{b64}" type="audio/mp3"></audio>'
+            st.markdown(ses_html, unsafe_allow_html=True)
+            
+            cevap = st.text_input("Duyduğun kelimeyi yaz:")
+            if st.button("Kontrol Et"):
+                if cevap.strip() == kart['korece'].strip():
+                    st.success("Doğru! Harikasın 메이라!")
+                    st.session_state.yazma_karti = random.choice(tum_kelimeler)
+                    st.rerun()
+                else:
+                    st.error(f"Yanlış. Doğrusu: {kart['korece']} olmalıydı.")
+                    
+        else:
+            st.info("Aşağıdaki cümlede boş bırakılan yere uygun kelimeyi yaz.")
+            gizli_cumle = kart['ornek_ko'].replace(kart['korece'], "[___]")
+            
+            st.markdown(f"### {gizli_cumle}")
+            st.caption(f"💡 İpucu: {kart['tr']} ({kart['ornek_tr']})")
+            
+            cevap_bosluk = st.text_input("Boşluğa gelecek kelimeyi yaz (Kök haliyle):")
+            if st.button("Boşluğu Kontrol Et"):
+                if cevap_bosluk.strip() == kart['korece'].strip():
+                    st.success("Doğru!")
+                    st.session_state.yazma_karti = random.choice(tum_kelimeler)
+                    st.rerun()
+                else:
+                    st.error(f"Yanlış. Doğrusu: {kart['korece']} olmalıydı.")
+                    
+        if st.button("Başka Kelimeye Geç"):
+            st.session_state.yazma_karti = random.choice(tum_kelimeler)
+            st.rerun()
