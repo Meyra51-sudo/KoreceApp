@@ -44,7 +44,6 @@ if 'veri_yuklendi' not in st.session_state:
         "오늘 너무 예뻐요!", "포기하지 마세요!", "오늘도 화이팅!", "한국어 천재 메이라!", "할 수 있어요!"
     ])
     
-    # Sheets'ten Veri Çekme ve Tarihe Göre Ayırma (Anki Algoritması)
     kayitlar = sheet.get_all_records()
     bugun = datetime.now().date()
     
@@ -86,12 +85,12 @@ Görseldeki Korece kelimeleri, el yazısı notları ve dilbilgisi kurallarını 
 
 KURALLAR (MEYRA'NIN NOT ALMA STİLİ):
 1. ALTI ÇİZİLİ KELİMELER: Unutulan kelimelerdir. KESİNLİKLE LİSTEYE EKLE.
-2. ZIT ANLAMLILAR (X İŞARETİ): "가다 x 오다" gibi arasına 'x' veya 'X' koyulmuş kelimeler zıt anlamlıdır. "tr" kısmına "Anlamı (Zıt Anlamlısı: [Diğer Kelime])" yaz.
-3. GRAMER KURALLARI: Yeni dilbilgisi kalıplarını çıkar ve "tip" değerini "gramer" yap.
+2. ZIT ANLAMLILAR (X İŞARETİ): "가다 x 오다" gibi arasına 'x' koyulmuş kelimeler zıt anlamlıdır. "tr" kısmına "Anlamı (Zıt Anlamlısı: [Diğer Kelime])" yaz.
+3. GRAMER KURALLARI: Yeni dilbilgisi kalıplarını çıkar ve "tip" değerini "gramer" yap. Gramer kuralının başına mutlaka tire (-) koy (Örn: -아/어야 하다).
 4. KELİMELER: Gramer dışındakilerin "tip" değerini "kelime" yap. Sadece TOPIK 4+ kelimeleri al. Eşanlamlıları virgülle tek satırda birleştir.
-5. ÖRNEK CÜMLELER (PASİF ÖĞRENME): 
-   A) Özneler HER ZAMAN ünlü kişiler veya tarihi karakterler olmalı (Örn: 아인슈타인, 마이클 잭슨).
-   B) Cümlelerde Korece sayma kelimeleri (개, 명, 마리 등) ve rakamlar bulunmalı.
+5. ÖRNEK CÜMLELER (ÇOK ÖNEMLİ): 
+   A) İLK TERCİH: Eğer kelime veya gramer, sayfa üzerinde TAM BİR CÜMLE içinde kullanılmışsa, KESİNLİKLE o orijinal cümleyi al.
+   B) İKİNCİ TERCİH: Kitapta cümle yoksa kendin üret. Üretirken özneler HER ZAMAN ünlü kişiler (아인슈타인 vb.) olmalı ve cümle içinde Korece sayma kelimeleri (개, 명 등) ile rakamlar bulunmalı.
 6. JSON formatı:
 [{"tip": "kelime/gramer", "korece": "hedef metin", "tr": "Türkçe", "en": "İngilizce", "ornek_ko": "Örnek cümle", "ornek_tr": "Çevirisi", "is_hard": false, "hard_streak": 0, "interval": 1, "ease": 2.5, "next_review": ""}]
 """
@@ -99,17 +98,20 @@ KURALLAR (MEYRA'NIN NOT ALMA STİLİ):
                     json_metni = cevap.text.strip().replace("```json", "").replace("```", "")
                     veriler = json.loads(json_metni)
                     
-                    mevcut_korece = {k['korece'] for k in st.session_state.kelimeler + st.session_state.calisilmis}
+                    mevcut_korece = {k['korece'].strip() for k in st.session_state.kelimeler + st.session_state.calisilmis}
                     yeni_maddeler = []
                     
                     bugun = str(datetime.now().date())
                     for k in veriler:
-                        if k['korece'] not in mevcut_korece:
-                            k['next_review'] = bugun # Yeni kelimeler hemen çalışılacak
+                        korece_temiz = k['korece'].strip()
+                        if korece_temiz not in mevcut_korece:
+                            k['korece'] = korece_temiz
+                            k['next_review'] = bugun
                             yeni_maddeler.append(k)
+                            mevcut_korece.add(korece_temiz) # Aynı sayfa içinde mükerrer çıkarmayı önler
                     
                     st.session_state.kelimeler.extend(yeni_maddeler)
-                    veritabani_guncelle() # Sayfa yüklenince Sheets'e kaydet
+                    veritabani_guncelle()
                     
                     random.shuffle(st.session_state.kelimeler)
                     st.success(f"{len(yeni_maddeler)} yeni madde desteye eklendi ve buluta kaydedildi!")
@@ -138,14 +140,14 @@ with tab2:
                 st.session_state.kelimeler.pop() 
                 st.session_state.kelimeler.insert(0, son_islem['kelime'])
             st.session_state.kart_arkasi = False
-            veritabani_guncelle() # Geri alınca da kaydet
+            veritabani_guncelle()
             st.rerun()
 
     if len(st.session_state.kelimeler) == 0:
         if len(st.session_state.calisilmis) == 0:
             st.info("Destede madde yok. Lütfen kitap yükleyin.")
         else:
-            st.success("Harikasın 메이라! Bugünlük desteyi bitirdin. Aralıklı tekrar algoritmasına göre vakti gelmeyen kelimeler seni bekletiyor.")
+            st.success("Harikasın 메이라! Bugünlük desteyi bitirdin.")
             if st.button("Erkenden Baştan Karıştır (Pratik)"):
                 st.session_state.kelimeler = st.session_state.calisilmis.copy()
                 st.session_state.calisilmis = []
@@ -166,7 +168,7 @@ with tab2:
             if st.button("Öğretmene Gönder", use_container_width=True):
                 if kullanici_cumlesi:
                     with st.spinner("Öğretmen cümleni okuyor..."):
-                        geribildirim_komutu = f"Senin adın AI Öğretmen. Karşındaki öğrencinin adı Meyra. Onunla arkadaşça, samimi ve sen diliyle konuş (Örn: 'Harikasın Meyra!'). Asla 'arkadaşın' gibi 3. şahıs kelimeler kullanma. Meyra şu kelimeyi: '{kart['korece']}' ve şu grameri: '{st.session_state.secilen_gramer}' kullanarak şu cümleyi kurdu: '{kullanici_cumlesi}'. Cümle doğru mu? Hata varsa doğrudan ona açıklayarak düzelt."
+                        geribildirim_komutu = f"Senin adın AI Öğretmen. Karşındaki öğrencinin adı Meyra. Onunla arkadaşça, samimi ve sen diliyle konuş (Örn: 'Harikasın Meyra!'). Asla 3. şahıs kelimeler kullanma. Meyra şu kelimeyi: '{kart['korece']}' ve şu grameri: '{st.session_state.secilen_gramer}' kullanarak şu cümleyi kurdu: '{kullanici_cumlesi}'. Cümle doğru mu? Hata varsa doğrudan ona açıklayarak düzelt."
                         cevap = model.generate_content(geribildirim_komutu)
                         st.session_state.gramer_feedback = cevap.text
             
@@ -240,7 +242,7 @@ with tab2:
                     if st.button("Evet, Öğrendim"):
                         kart['is_hard'] = False
                         kart['hard_streak'] = 0
-                        kart['next_review'] = str(bugun_tarihi + timedelta(days=3)) # 3 gün sonraya at
+                        kart['next_review'] = str(bugun_tarihi + timedelta(days=3))
                         islem_karti = st.session_state.kelimeler.pop(0)
                         st.session_state.calisilmis.append(islem_karti)
                         veritabani_guncelle()
@@ -310,7 +312,6 @@ with tab3:
         if st.button("Değişiklikleri Google Sheets'e Kaydet", type="primary"):
             veriler_dict = duzenlenmis_df.to_dict('records')
             
-            # Kelimeler ve çalışılmış olarak tekrar ayır
             yeni_kelimeler = []
             yeni_calisilmis = []
             bugun = datetime.now().date()
