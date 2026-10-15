@@ -5,8 +5,10 @@ import json
 import random
 import gspread
 import io
+import base64
 import asyncio
 import edge_tts
+import re
 from google.oauth2.service_account import Credentials
 from datetime import datetime, timedelta
 
@@ -16,8 +18,8 @@ SHEET_URL = st.secrets["SHEET_URL"]
 GCP_JSON = json.loads(st.secrets["GCP_JSON"])
 
 genai.configure(api_key=GOOGLE_API_KEY)
-# Kota ve 404 hatası vermeyen, 1500 günlük limiti olan en stabil model:
-model = genai.GenerativeModel('gemini-1.5-flash', generation_config={"temperature": 0.0})
+# 404 Hatasını kesin olarak çözen tam sürüm (latest) modeli
+model = genai.GenerativeModel('gemini-1.5-flash-latest', generation_config={"temperature": 0.0})
 
 scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
 creds = Credentials.from_service_account_info(GCP_JSON, scopes=scopes)
@@ -40,13 +42,11 @@ def kelime_zor_mu(kart):
         return deger
     return str(deger).strip().lower() in ['true', '1', 't', 'y', 'yes']
 
-# Boşluk, virgül veya noktalama işaretlerini yoksayarak sadece harfleri karşılaştırır
 def temiz_karsilastir(m1, m2):
     def temizle(metin):
         return ''.join(char for char in str(metin) if char.isalnum())
     return temizle(m1) == temizle(m2)
 
-# Uygulamanın kasmaması için sesleri hafızaya alır (Cache)
 @st.cache_data(show_spinner=False)
 def ses_olustur(metin):
     async def _amain():
@@ -106,7 +106,7 @@ with tab1:
     
     if gorsel is not None:
         if st.button("Analiz Et ve Desteye Ekle"):
-            with st.spinner("Öğretmen analiz ediyor..."):
+            with st.spinner("Öğretmen sayfayı analiz ediyor..."):
                 try:
                     gorsel_verisi = [{"mime_type": "image/jpeg", "data": gorsel.getvalue()}]
                     komut = """
@@ -145,7 +145,7 @@ KURALLAR:
                     st.success(f"Analiz tamamlandı! Toplam {len(yeni_maddeler)} yeni madde başarıyla eklendi.")
                     
                 except Exception as e:
-                    st.error(f"Hata: Lütfen tekrar deneyin.")
+                    st.error(f"Sistem Hatası: {e}")
 
 with tab2:
     zor_kelime_sayisi = sum(1 for k in (st.session_state.kelimeler + st.session_state.calisilmis) if kelime_zor_mu(k))
@@ -195,7 +195,7 @@ with tab2:
             if st.button("Öğretmene Gönder", use_container_width=True):
                 if kullanici_cumlesi:
                     with st.spinner("Öğretmen cümleni okuyor..."):
-                        geribildirim_komutu = f"Adın AI Öğretmen. Öğrencinin adı Meyra. Samimi konuş. Meyra '{kart['korece']}' kelimesini ve '{st.session_state.secilen_gramer}' gramerini kullanarak şu cümleyi kurdu: '{kullanici_cumlesi}'. Doğru mu? Hata varsa doğrudan açıkla."
+                        geribildirim_komutu = f"Adın AI Öğretmen. Karşındaki Meyra. Meyra '{kart['korece']}' kelimesini ve '{st.session_state.secilen_gramer}' gramerini kullanarak şu cümleyi kurdu: '{kullanici_cumlesi}'. Cümle doğru mu? Hata varsa doğrudan ona açıkla."
                         cevap = model.generate_content(geribildirim_komutu)
                         st.session_state.gramer_feedback = cevap.text
             
@@ -228,7 +228,7 @@ with tab2:
             if st.button("Cümlemi Kontrol Et", use_container_width=True):
                 if kullanici_cumlesi:
                     with st.spinner("Öğretmen cümleni inceliyor..."):
-                        geribildirim_komutu = f"Adın AI Öğretmen. Öğrencinin adı Meyra. Samimi konuş. Meyra '{kart['korece']}' gramerini kullanarak şu cümleyi kurdu: '{kullanici_cumlesi}'. Cümle doğru mu? Hata varsa doğrudan Meyra'ya hitap ederek düzelt."
+                        geribildirim_komutu = f"Adın AI Öğretmen. Karşındaki Meyra. Meyra '{kart['korece']}' gramerini kullanarak şu cümleyi kurdu: '{kullanici_cumlesi}'. Doğru mu? Hata varsa doğrudan Meyra'ya hitap ederek düzelt."
                         cevap = model.generate_content(geribildirim_komutu)
                         st.session_state.gramer_feedback = cevap.text
             
@@ -316,6 +316,7 @@ with tab2:
                             st.session_state.calisilmis.append(islem_karti)
                             st.session_state.gecmis.append({'kelime': islem_karti, 'islem': 'bildim'})
                             st.session_state.kart_arkasi = False
+                            st.session_state.yazma_id = random.randint(10000, 99999)
                             veritabani_guncelle()
                             st.rerun()
                 else:
@@ -336,6 +337,7 @@ with tab2:
                                 st.session_state.kelimeler.append(islem_karti) 
                                 st.session_state.gecmis.append({'kelime': islem_karti, 'islem': 'bilemedim'})
                                 st.session_state.kart_arkasi = False
+                                st.session_state.yazma_id = random.randint(10000, 99999)
                                 veritabani_guncelle()
                                 st.rerun()
                         with colB:
@@ -347,6 +349,7 @@ with tab2:
                                 st.session_state.calisilmis.append(islem_karti)
                                 st.session_state.gecmis.append({'kelime': islem_karti, 'islem': 'bildim'})
                                 st.session_state.kart_arkasi = False
+                                st.session_state.yazma_id = random.randint(10000, 99999)
                                 veritabani_guncelle()
                                 st.rerun()
                     else:
@@ -355,6 +358,7 @@ with tab2:
                             st.session_state.kelimeler.append(islem_karti) 
                             st.session_state.gecmis.append({'kelime': islem_karti, 'islem': 'bilemedim'})
                             st.session_state.kart_arkasi = False
+                            st.session_state.yazma_id = random.randint(10000, 99999)
                             veritabani_guncelle()
                             st.rerun()
 
@@ -391,19 +395,26 @@ with tab4:
     st.header("✍️ Yazma Pratiği (받아쓰기)")
     tum_kelimeler = [k for k in (st.session_state.calisilmis + st.session_state.kelimeler) if k.get('tip') == 'kelime']
     
-    if len(tum_kelimeler) == 0:
-        st.info("Pratik yapacak kelime yok.")
+    # Yeni Mezuniyet Kuralı: Sadece interval değeri 21'den küçük olanlar Dikte modunda sorulur
+    dikte_havuzu = [k for k in tum_kelimeler if float(k.get('interval', 1)) < 21]
+    
+    if len(dikte_havuzu) == 0:
+        if len(tum_kelimeler) > 0:
+            st.success("🎉 Harika! Tüm kelimeler uzun süreli hafızana yerleşmiş durumda. Şu an dikte yapılacak taze/yeni kelime yok.")
+        else:
+            st.info("Pratik yapacak kelime yok.")
     else:
-        # Sadece "Başka Kelimeye Geç" tıklandığında veya ilk girişte kelime seç
-        if st.session_state.get('yazma_karti') is None:
-            st.session_state.yazma_karti = random.choice(tum_kelimeler)
+        if st.session_state.get('yazma_karti') is None or st.session_state.yazma_karti not in dikte_havuzu:
+            st.session_state.yazma_karti = random.choice(dikte_havuzu)
             st.session_state.yazma_id = random.randint(10000, 99999)
             
         kart = st.session_state.yazma_karti
         st.info("Aşağıdaki sesi dinle ve duyduğun Korece kelimeyi yaz.")
         
-        # Native st.audio ile tamamen güvenli loop
-        st.audio(ses_olustur(kart['korece']), format="audio/mp3", loop=True)
+        ses_bytes = ses_olustur(kart['korece'])
+        b64 = base64.b64encode(ses_bytes).decode()
+        ses_html = f'<audio id="audio_dikte_{st.session_state.yazma_id}" controls loop><source src="data:audio/mp3;base64,{b64}" type="audio/mp3"></audio>'
+        st.markdown(ses_html, unsafe_allow_html=True)
         
         cevap = st.text_input("Duyduğun kelimeyi yaz:", key=f"dikte_input_{st.session_state.yazma_id}")
         
@@ -416,6 +427,6 @@ with tab4:
                     st.error(f"Yanlış. Doğrusu: '{kart['korece']}' olmalıydı.")
         with col2:
             if st.button("Başka Kelimeye Geç", use_container_width=True):
-                st.session_state.yazma_karti = random.choice(tum_kelimeler)
+                st.session_state.yazma_karti = random.choice(dikte_havuzu)
                 st.session_state.yazma_id = random.randint(10000, 99999)
                 st.rerun()
