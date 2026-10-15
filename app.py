@@ -29,35 +29,26 @@ st.set_page_config(page_title="MEYRA", layout="centered")
 # --- YARDIMCI FONKSİYONLAR ---
 
 def ai_cevap_al(komut, gorsel_verisi=None):
-    # Google'ın zorunlu kıldığı gemini-3.8-flash modelini ve alternatiflerini güvenli şekilde dener
-    Denecek_Modeller = ['gemini-3.8-flash', 'gemini-1.5-flash', 'gemini-flash']
-    son_hata = None
-    
-    for m_adi in denecek_modeller:
-        try:
-            model = genai.GenerativeModel(m_adi, generation_config={"temperature": 0.0})
-            if gorsel_verisi:
-                cevap = model.generate_content([komut, gorsel_verisi])
-            else:
-                cevap = model.generate_content(komut)
-            return cevap.text
-        except Exception as e:
-            son_hata = e
-            continue
-            
-    # Eğer hiçbiri olmazsa listeden otomatik bulmaya çalışır
-    for m in genai.list_models():
-        if 'generateContent' in m.supported_generation_methods:
-            try:
-                model = genai.GenerativeModel(m.name, generation_config={"temperature": 0.0})
-                if gorsel_verisi:
-                    return model.generate_content([komut, gorsel_verisi]).text
-                else:
-                    return model.generate_content(komut).text
-            except:
-                continue
-                
-    raise Exception(f"Model bağlantı hatası: {son_hata}")
+    # Google SDK üzerinden o an aktif olan modeli dinamik ve hatasız olarak yakalar
+    aktif_model = None
+    try:
+        for m in genai.list_models():
+            if 'generateContent' in m.supported_generation_methods:
+                if 'flash' in m.name.lower() or 'pro' in m.name.lower():
+                    aktif_model = m.name
+                    break
+    except:
+        pass
+        
+    if not aktif_model:
+        aktif_model = 'gemini-1.5-flash'
+        
+    model = genai.GenerativeModel(aktif_model, generation_config={"temperature": 0.0})
+    if gorsel_verisi:
+        cevap = model.generate_content([komut, gorsel_verisi])
+    else:
+        cevap = model.generate_content(komut)
+    return cevap.text
 
 def veritabani_guncelle():
     tum_veriler = st.session_state.kelimeler + st.session_state.calisilmis
