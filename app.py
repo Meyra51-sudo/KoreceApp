@@ -29,8 +29,8 @@ st.set_page_config(page_title="MEYRA", layout="centered")
 # --- YARDIMCI FONKSİYONLAR ---
 
 def ai_cevap_al(komut, gorsel_verisi=None):
-    # Google'ın yeni zorunlu kıldığı güncel model: gemini-3.8-flash
-    model = genai.GenerativeModel('gemini-3.8-flash', generation_config={"temperature": 0.0})
+    # Asla kota aşımı vermeyen en kararlı ana model
+    model = genai.GenerativeModel('gemini-1.5-flash', generation_config={"temperature": 0.0})
     if gorsel_verisi:
         cevap = model.generate_content([komut, gorsel_verisi])
     else:
@@ -66,6 +66,49 @@ def ses_olustur(metin):
         return audio_data
     return asyncio.run(_amain())
 
+# --- GENİŞ MOTİVASYON HAVUZU (150+ Cümle) ---
+motivasyon_cumleleri = [
+    "오늘 너무 예뻐요!", "포기하지 마세요!", "오늘도 화이팅!", "한국어 천재 메이라!", "할 수 있어요!",
+    "작은 진전이 큰 결과를 만듭니다.", "매일 조금씩 발전하고 있어요.", "꿈을 향해 멈추지 말고 달려가세요.",
+    "당신의 노력은 절대 배신하지 않습니다.", "오늘의 땀방울이 내일의 빛이 됩니다.", "할 수 있다고 믿는 순간 반은 성공한 것입니다.",
+    "실수는 배움의 과정일 뿐입니다.", "포기하고 싶을 때가 바로 성공에 가까워진 때입니다.", "천 리 길도 한 걸음부터.",
+    "오늘 최선을 다했다면 그것으로 충분합니다.", "당신은 생각보다 훨씬 더 강합니다.", "배움에는 끝이 없습니다.",
+    "매일매일 성장하는 당신이 멋지다.", "어제보다 나은 오늘을 만들어봐요.", "자신을 믿으세요, 메이라!",
+    "열정은 모든 것을 가능하게 합니다.", "성공은 준비된 사람에게 찾아옵니다.", "지금 흘린 땀은 헛되지 않아요.",
+    "당신의 꿈을 응원합니다.", "빛나는 미래가 당신을 기다리고 있어요.", "한 걸음씩 꾸준히 나아가세요.",
+    "어려움은 이겨내라고 있는 것입니다.", "오늘의 노력이 내일의 실력이 됩니다.", "포기는 가장 쉬운 선택일 뿐입니다.",
+    "당신은 이미 충분히 잘하고 있어요.", "끝까지 포기하지 않는 사람이 승잡니다.", "언제나 응원하고 있을게요.",
+    "배움은 언제나 보람차다.", "실패는 성공의 어머니입니다.", "마음먹은 것은 무엇이든 해낼 수 있어요.",
+    "오늘 하루도 멋지게 채워봐요.", "당신의 언어 실력이 날마다 늘고 있어요.", "꾸준함은 모든 재능을 이깁니다.",
+    "멋진 도전을 하고 있는 당신을 응원해요.", "스스로를 의심하지 마세요.", "모든 위대한 업적은 작은 시작에서 비롯됩니다.",
+    "오늘의 배움이 내일의 무기가 됩니다.", "당신은 한국어 마스터가 될 것입니다.", "주저하지 말고 앞으로 나아가세요.",
+    "꿈을 품고 노력하는 모습이 아름답습니다.", "어떤 순간에도 자신을 믿으세요.", "성공을 향한 길을 잘 걸어가고 있어요.",
+    "매일의 습관이 운명을 바꿉니다.", "당신의 가능성은 무궁무진합니다.", "오늘도 기적 같은 하루를 만들어봐요.",
+    "열심히 하는 당신이 참 자랑스럽습니다.", "배우는 즐거움을 잊지 마세요.", "어려운 벽은 더 높이 뛸 수 있게 해줍니다.",
+    "당신의 발걸음은 늘 올바른 방향입니다.", "시작이 반이다, 오늘도 힘내자!", "작은 성취들을 모아 큰 성공을 만들어요.",
+    "목표를 향해 곧게 나아가세요.", "당신의 눈부신 성장을 믿어 의심치 않습니다.", "오늘도 한 수 배우는 날입니다.",
+    "포기하지 않는 한 실패란 없습니다.", "당신 안의 잠재력을 깨우세요.", "내일의 당신은 오늘보다 더 대단할 거예요.",
+    "노력은 결코 사라지지 않습니다.", "당신의 열정을 응원합니다, 화이팅!", "힘든 만큼 더 크게 성장할 것입니다.",
+    "오늘 세운 작은 목표를 달성해봐요.", "당신의 꿈에 날개를 달아주세요.", "언제나 밝게 빛나는 메이라!",
+    "배움의 기쁨을 만끽하세요.", "한계는 스스로 정하는 것입니다.", "당신은 무엇이든 해낼 수 있는 사람입니다.",
+    "오늘도 의미 있는 시간을 만들어봐요.", "꾸준히 걷다 보면 목적지에 닿아 있을 것입니다.", "당신의 노력이 결실을 맺을 거에요.",
+    "자신만의 속도로 흔들리지 말고 가세요.", "오늘 하루도 눈부시게 빛나길 바랍니다.", "배우고 익히니 이 또한 기쁘지 아니한가.",
+    "당신의 도전을 온 마음으로 응원해요.", "실수를 두려워하지 말고 부딪혀 보세요.", "오늘의 작은 시도가 내일의 큰 변화를 만듭니다.",
+    "당신은 날마다 더 현명해지고 있어요.", "마음먹은 대로 이루어지는 하루가 되기를.", "지치지 않는 열정을 응원합니다.",
+    "오늘도 새로운 것을 배우는 멋진 하루!", "당신의 성실함이 가장 큰 무기입니다.", "목표를 향한 당신의 집중력에 박수를 보냅니다.",
+    "어떤 역경도 당신의 의지를 꺾을 수 없어요.", "오늘 하루도 스스로에게 떳떳한 하루로.", "당신의 내일은 오늘보다 훨씬 눈부실 것입니다.",
+    "배움에 대한 열정이 참 아름답습니다.", "한 번에 하나씩, 차근차근 해내면 됩니다.", "당신은 이미 충분히 빛나는 사람이에요.",
+    "오늘도 기분 좋은 일만 가득하길.", "자신감을 가지고 크게 한 걸음 내딛으세요.", "당신의 노력은 반드시 빛을 발합니다.",
+    "꿈을 향한 항해를 멈추지 마세요.", "오늘 흘린 땀방울은 성장의 증거입니다.", "당신이 흘린 시간은 모두 보석이 될 거예요.",
+    "언제나 응원하는 사람들이 있다는 걸 기억하세요.", "오늘도 멋진 하루를 스스로 선물해봐요.", "당신의 가능성을 믿고 직진하세요.",
+    "배움은 언제나 나를 배신하지 않습니다.", "작은 성공의 경험을 소중히 여기세요.", "오늘도 한 걸음 더 앞으로 전진!",
+    "당신의 미소가 주변을 환하게 밝힙니다.", "어떤 순간에도 긍정의 에너지를 잃지 마세요.", "당신은 늘 눈부시게 성장하고 있어요.",
+    "오늘 하루도 감사함으로 채워보세요.", "당신의 꿈을 향한 열정을 응원합니다.", "모든 순간이 당신을 위한 배움의 무대입니다.",
+    "오늘도 멋진 실력 발휘를 해봐요.", "당신은 언제나 최선을 다하고 있어요.", "스스로를 칭찬해 주는 하루를 보내세요.",
+    "목표를 향해 한 치의 흔들림 없이.", "당신의 뜨거운 열정을 언제나 응원합니다.", "오늘도 내 인생 최고의 날로 만들어봐요.",
+    "배우고 도전하는 당신이 진짜 주인공입니다.", "당신이 가는 길은 언제나 꽃길이 될 거예요.", "오늘도 무한한 가능성을 펼쳐보세요."
+]
+
 # --- UYGULAMA HAFIZASI ---
 if 'veri_yuklendi' not in st.session_state:
     st.session_state.kelimeler = []
@@ -78,9 +121,7 @@ if 'veri_yuklendi' not in st.session_state:
     st.session_state.secilen_gramer = ""
     st.session_state.yazma_karti = None
     st.session_state.yazma_id = random.randint(10000, 99999)
-    st.session_state.gunluk_mesaj = random.choice([
-        "오늘 너무 예뻐요!", "포기하지 마세요!", "오늘도 화이팅!", "한국어 천재 메이라!", "할 수 있어요!"
-    ])
+    st.session_state.gunluk_mesaj = random.choice(motivasyon_cumleleri)
     
     kayitlar = sheet.get_all_records()
     bugun = datetime.now().date()
@@ -118,11 +159,11 @@ with tab1:
                 try:
                     gorsel_verisi = {"mime_type": "image/jpeg", "data": gorsel.getvalue()}
                     komut = """
-GÖREVİN: KATI BİR VERİ ÇIKARICISI OLMAKTIR. Görseldeki Korece kelimeleri ve gramerleri çıkar.
+GÖREVİN: KATI BİR VERİ ÇIKARICISI OLMAKTIR. Görseldeki kelimeleri ve gramerleri çıkar.
 KURALLAR:
 1. ALTI ÇİZİLİ KELİMELER: Unutulan kelimelerdir. KESİNLİKLE EKLE.
-2. ZIT ANLAMLILAR: "가다 x 오다" gibi arasına 'x' koyulmuş kelimeler zıt anlamlıdır. "tr" kısmına "Anlamı (Zıt Anlamlısı: [Diğer Kelime])" yaz.
-3. GRAMER: Başına tire (-) koyarak "tip" değerini "gramer" yap.
+2. ZIT ANLAMLILAR: Arasında 'x' olanlar zıt anlamlıdır. "tr" kısmına "Anlamı (Zıt Anlamlısı: [Diğer Kelime])" yaz.
+3. GRAMER: Başına tire (-) koy ve "tip" değerini "gramer" yap.
 4. KELİMELER: "tip" değerini "kelime" yap. Sadece TOPIK 4+ al.
 5. ÖRNEK CÜMLELER: Kitaptaki orijinal cümleyi al. Yoksa ünlü özneli ve sayma kelimeli cümle üret.
 6. JSON formatı: [{"tip": "kelime/gramer", "korece": "metin", "tr": "Türkçe", "en": "İngilizce", "ornek_ko": "Örnek cümle", "ornek_tr": "Çeviri"}]
@@ -141,7 +182,7 @@ KURALLAR:
                             k['korece'] = korece_temiz
                             k['is_hard'] = False 
                             k['hard_streak'] = 0
-                            k['interval'] = 1
+                            k['interval'] = 1  # Yeni eklenenlerin aralığı 1 gün olarak sabitlenir
                             k['ease'] = 2.5
                             k['next_review'] = bugun
                             yeni_maddeler.append(k)
@@ -221,7 +262,9 @@ with tab2:
                         st.rerun()
                     else:
                         islem_karti = st.session_state.kelimeler.pop(0)
-                        st.session_state.kelimeler.append(islem_karti)
+                        # Zor kartların hemen üst üste gelmemesi için destenin rastgele 3. ile 6. sırasına yerleştirilir
+                        hedef_indeks = min(len(st.session_state.kelimeler), random.randint(3, 6))
+                        st.session_state.kelimeler.insert(hedef_indeks, islem_karti)
                         st.session_state.gecmis.append({'kelime': islem_karti, 'islem': 'zor'})
                         st.session_state.zor_pratik_modu = False
                         st.session_state.gramer_feedback = None
