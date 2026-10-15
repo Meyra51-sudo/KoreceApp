@@ -76,7 +76,7 @@ topik_4_gramerler = ["-아/어 보이다", "-(으)ㄹ 뿐만 아니라", "-(으)
 tab1, tab2, tab3 = st.tabs(["📂 1. Yükle", "🧠 2. Çalışma Modu", "⚙️ 3. Düzenle"])
 
 with tab1:
-    st.markdown("<h2 style='text-align: center;'>Hoşgeldin 메이라</h2>", unsafe_allow_html=True)
+    st.markdown("<h2 style='text-align: center;'>반가워 메이라</h2>", unsafe_allow_html=True)
     st.markdown(f"<h4 style='text-align: center; color: #2e7bcf;'>{st.session_state.gunluk_mesaj}</h4>", unsafe_allow_html=True)
     st.markdown("---")
     
@@ -331,7 +331,7 @@ with tab2:
                                 veritabani_guncelle()
                                 st.rerun()
                         with colB:
-                            if st.button("✅ Evet, biliyordum", use_container_width=True):
+                            if st.button("✅ Evet, biliyormuşum", use_container_width=True):
                                 kart['ease'] = kart.get('ease', 2.5) + 0.1
                                 kart['interval'] = max(1, int(kart.get('interval', 1) * kart['ease']))
                                 kart['next_review'] = str(bugun_tarihi + timedelta(days=kart['interval']))
