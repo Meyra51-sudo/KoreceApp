@@ -146,7 +146,6 @@ KURALLAR:
 6. ÖRNEK CÜMLELER: Kitaptaki orijinal cümleyi al. Yoksa ünlü özneli ve sayma kelimeli cümle üret.
 7. JSON formatı: [{"tip": "kelime/gramer", "korece": "metin", "tr": "Türkçe", "en": "İngilizce", "ornek_ko": "Örnek cümle", "ornek_tr": "Çeviri"}]
 """
-
                     json_metni = ai_cevap_al(komut, gorsel_verisi)
                     json_metni = json_metni.strip().replace("```json", "").replace("```", "")
                     veriler = json.loads(json_metni)
