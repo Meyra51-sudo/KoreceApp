@@ -152,22 +152,39 @@ KURALLAR:
                     yeni_maddeler = []
                     bugun = str(datetime.now().date())
                     
+                    mevcut_korece_dict = {k['korece'].split()[0].strip(): k for k in st.session_state.kelimeler + st.session_state.calisilmis}
+                    yeni_maddeler = []
+                    bugun = str(datetime.now().date())
+                    
                     for k in veriler:
-                        korece_temiz = k['korece'].strip()
-                        if korece_temiz not in mevcut_korece:
-                            k['korece'] = korece_temiz
+                        # Kelimenin parantezsiz/notsuz kök halini al
+                        ana_kelime = k['korece'].split()[0].replace("=", "").strip()
+                        
+                        if ana_kelime in mevcut_korece_dict:
+                            eski_kart = mevcut_korece_dict[ana_kelime]
+                            # Eğer yeni okunan metin, eskisine göre daha uzunsa (Yani yeni bir not veya eşanlamlı eklenmişse)
+                            if len(k['korece']) > len(eski_kart['korece']) or len(k['tr']) > len(eski_kart['tr']):
+                                eski_kart['korece'] = k['korece'] # Yeni notlu halini yaz
+                                eski_kart['tr'] = k['tr']
+                                eski_kart['is_hard'] = False
+                                eski_kart['hard_streak'] = 0
+                                eski_kart['interval'] = 1 # İstatistiği sıfırla (1. Gün)
+                                eski_kart['ease'] = 2.5
+                                eski_kart['next_review'] = bugun
+                        else:
+                            # Kelime tamamen yeniyse normal şekilde ekle
                             k['is_hard'] = False 
                             k['hard_streak'] = 0
                             k['interval'] = 1 
                             k['ease'] = 2.5
                             k['next_review'] = bugun
                             yeni_maddeler.append(k)
-                            mevcut_korece.add(korece_temiz)
+                            mevcut_korece_dict[ana_kelime] = k
                     
                     st.session_state.kelimeler.extend(yeni_maddeler)
                     veritabani_guncelle()
                     random.shuffle(st.session_state.kelimeler)
-                    st.success(f"Analiz tamamlandı! Toplam {len(yeni_maddeler)} yeni madde başarıyla eklendi.")
+                    st.success(f"Analiz tamamlandı! {len(yeni_maddeler)} yeni kelime eklendi ve not alınan mevcut kelimeler güncellenip sıfırlandı.")
                     
                 except Exception as e:
                     st.error(str(e))
