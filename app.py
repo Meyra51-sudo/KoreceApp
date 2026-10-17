@@ -135,10 +135,9 @@ with tab1:
                 try:
                     gorsel_verisi = {"mime_type": "image/jpeg", "data": gorsel.getvalue()}
                     komut = """
-komut = """
 GÖREVİN: KATI BİR VERİ ÇIKARICISI OLMAKTIR. Görseldeki kelimeleri ve gramerleri çıkar.
 KURALLAR:
-1. ÖZEL NOTLAR VE ALTI ÇİZİLİLER (MUTLAK KURAL): Görselde altı çizilmiş olan veya el yazısıyla önüne madde işareti konularak not alınmış kelimeler KESİNLİKLE (TOPIK seviyesine bakılmaksızın) eklenecektir. Bu kural diğer tüm filtrelerden üstündür.
+1. ÖZEL NOTLAR VE ALTI ÇİZİLİLER (MUTLAK KURAL): Görselde altı çizilmiş olan veya el yazısıyla/madde işaretiyle not alınmış kelimeler KESİNLİKLE (TOPIK seviyesine bakılmaksızın) eklenecektir. Bu kural diğer tüm filtrelerden üstündür.
 2. ZIT / EŞ ANLAMLILAR: '=' eşanlamlı, 'x' veya '^' zıt anlamlıdır. Kök kelimenin yanına parantez içinde ekle.
 3. GRAMER: Başına tire (-) koy ve "tip" değerini "gramer" yap.
 4. ÇOK ANLAMLI GRAMER/KELİME: Eğer bir gramerin veya kelimenin birden fazla farklı kullanımı/anlamı verilmişse, bunları KESİNLİKLE ayrı maddeler olarak çıkar ve Korece metnin sonuna numara ekle (Örn: "-은/는 데다가 (1)").
@@ -146,6 +145,7 @@ KURALLAR:
 6. ÖRNEK CÜMLELER: Kitaptaki orijinal cümleyi al. Yoksa ünlü özneli ve sayma kelimeli cümle üret.
 7. JSON formatı: [{"tip": "kelime/gramer", "korece": "metin", "tr": "Türkçe", "en": "İngilizce", "ornek_ko": "Örnek cümle", "ornek_tr": "Çeviri"}]
 """
+
                     json_metni = ai_cevap_al(komut, gorsel_verisi)
                     json_metni = json_metni.strip().replace("```json", "").replace("```", "")
                     veriler = json.loads(json_metni)
