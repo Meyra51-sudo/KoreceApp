@@ -138,53 +138,67 @@ with tab1:
 GÖREVİN: KATI BİR VERİ ÇIKARICISI OLMAKTIR. Görseldeki kelimeleri ve gramerleri çıkar.
 KURALLAR:
 1. ALTI ÇİZİLİ KELİMELER: Unutulan kelimelerdir. KESİNLİKLE EKLE.
-2. ZIT ANLAMLILAR: Arasında 'x' olanlar zıt anlamlıdır. "tr" kısmına "Anlamı (Zıt Anlamlısı: [Diğer Kelime])" yaz.
+2. ZIT / EŞ ANLAMLILAR: '=' eşanlamlı, 'x' veya '^' zıt anlamlıdır. Kök kelimenin yanına parantez içinde ekle.
 3. GRAMER: Başına tire (-) koy ve "tip" değerini "gramer" yap.
-4. KELİMELER: "tip" değerini "kelime" yap. Sadece TOPIK 4+ al.
-5. ÖRNEK CÜMLELER: Kitaptaki orijinal cümleyi al. Yoksa ünlü özneli ve sayma kelimeli cümle üret.
-6. JSON formatı: [{"tip": "kelime/gramer", "korece": "metin", "tr": "Türkçe", "en": "İngilizce", "ornek_ko": "Örnek cümle", "ornek_tr": "Çeviri"}]
+4. ÇOK ANLAMLI GRAMER/KELİME: Eğer bir gramerin veya kelimenin görselde birden fazla farklı kullanımı/anlamı verilmişse, bunları KESİNLİKLE ayrı maddeler olarak çıkar ve Korece metnin sonuna numara ekle (Örn: "-은/는 데다가 (1)", "-은/는 데다가 (2)").
+5. KELİMELER: "tip" değerini "kelime" yap. Sadece TOPIK 4+ al.
+6. ÖRNEK CÜMLELER: Kitaptaki orijinal cümleyi al. Yoksa ünlü özneli ve sayma kelimeli cümle üret.
+7. JSON formatı: [{"tip": "kelime/gramer", "korece": "metin", "tr": "Türkçe", "en": "İngilizce", "ornek_ko": "Örnek cümle", "ornek_tr": "Çeviri"}]
 """
                     json_metni = ai_cevap_al(komut, gorsel_verisi)
                     json_metni = json_metni.strip().replace("```json", "").replace("```", "")
                     veriler = json.loads(json_metni)
                     
-                    mevcut_korece = {k['korece'].strip() for k in st.session_state.kelimeler + st.session_state.calisilmis}
-                    yeni_maddeler = []
-                    bugun = str(datetime.now().date())
+                    # Çift kelime kontrolünü kusursuzlaştırmak için temizleme fonksiyonu (boşluk ve tireleri görmezden gelir)
+                    def normalize_key(text):
+                        return ''.join(c.lower() for c in text.split('=')[0].split('^')[0].split('x')[0] if c.isalnum() or c in '()123456789')
                     
-                    mevcut_korece_dict = {k['korece'].split()[0].strip(): k for k in st.session_state.kelimeler + st.session_state.calisilmis}
+                    mevcut_korece_dict = {normalize_key(k['korece']): k for k in st.session_state.kelimeler + st.session_state.calisilmis}
+                    
                     yeni_maddeler = []
+                    eklenen_isimler = []
+                    guncellenen_isimler = []
                     bugun = str(datetime.now().date())
                     
                     for k in veriler:
-                        # Kelimenin parantezsiz/notsuz kök halini al
-                        ana_kelime = k['korece'].split()[0].replace("=", "").strip()
+                        ana_kelime_key = normalize_key(k['korece'])
                         
-                        if ana_kelime in mevcut_korece_dict:
-                            eski_kart = mevcut_korece_dict[ana_kelime]
-                            # Eğer yeni okunan metin, eskisine göre daha uzunsa (Yani yeni bir not veya eşanlamlı eklenmişse)
+                        if ana_kelime_key in mevcut_korece_dict:
+                            eski_kart = mevcut_korece_dict[ana_kelime_key]
+                            # Güncelleme: Yeni gelenin Korecesi veya Türkçesi eskisinden uzunsa (örn: eşanlamlı eklenmişse)
                             if len(k['korece']) > len(eski_kart['korece']) or len(k['tr']) > len(eski_kart['tr']):
-                                eski_kart['korece'] = k['korece'] # Yeni notlu halini yaz
+                                eski_kart['korece'] = k['korece']
                                 eski_kart['tr'] = k['tr']
                                 eski_kart['is_hard'] = False
                                 eski_kart['hard_streak'] = 0
-                                eski_kart['interval'] = 1 # İstatistiği sıfırla (1. Gün)
+                                eski_kart['interval'] = 1 # İstatistik sıfırlandı
                                 eski_kart['ease'] = 2.5
                                 eski_kart['next_review'] = bugun
+                                guncellenen_isimler.append(k['korece'])
                         else:
-                            # Kelime tamamen yeniyse normal şekilde ekle
+                            # Tamamen yeni kelime
                             k['is_hard'] = False 
                             k['hard_streak'] = 0
                             k['interval'] = 1 
                             k['ease'] = 2.5
                             k['next_review'] = bugun
                             yeni_maddeler.append(k)
-                            mevcut_korece_dict[ana_kelime] = k
+                            mevcut_korece_dict[ana_kelime_key] = k
+                            eklenen_isimler.append(k['korece'])
                     
-                    st.session_state.kelimeler.extend(yeni_maddeler)
-                    veritabani_guncelle()
-                    random.shuffle(st.session_state.kelimeler)
-                    st.success(f"Analiz tamamlandı! {len(yeni_maddeler)} yeni kelime eklendi ve not alınan mevcut kelimeler güncellenip sıfırlandı.")
+                    if yeni_maddeler or guncellenen_isimler:
+                        st.session_state.kelimeler.extend(yeni_maddeler)
+                        veritabani_guncelle()
+                        random.shuffle(st.session_state.kelimeler)
+                        
+                        mesaj = f"✅ Analiz tamamlandı! **{len(eklenen_isimler)}** yeni madde eklendi, **{len(guncellenen_isimler)}** madde güncellendi.\n\n"
+                        if eklenen_isimler:
+                            mesaj += f"✨ **Yeni Eklenenler:** {', '.join(eklenen_isimler)}\n"
+                        if guncellenen_isimler:
+                            mesaj += f"🔄 **Not Eklenerek Güncellenenler:** {', '.join(guncellenen_isimler)}"
+                        st.success(mesaj)
+                    else:
+                        st.info("Bu sayfadaki tüm kelimeler/gramerler zaten veritabanında en güncel haliyle mevcut. Yeni bir şey eklenmedi.")
                     
                 except Exception as e:
                     st.error(str(e))
