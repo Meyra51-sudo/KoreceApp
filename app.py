@@ -29,19 +29,9 @@ st.set_page_config(page_title="MEYRA", layout="centered")
 # --- YARDIMCI FONKSİYONLAR ---
 
 def ai_cevap_al(komut, gorsel_verisi=None):
-    # Google'ın SDK'sında o an aktif olan flash modelini dinamik olarak yakalar (404'ü kökten çözer)
-    aktif_model_adi = "gemini-1.5-flash"
     try:
-        for m in genai.list_models():
-            if 'generateContent' in m.supported_generation_methods:
-                if 'flash' in m.name.lower() or 'pro' in m.name.lower():
-                    aktif_model_adi = m.name
-                    break
-    except:
-        pass
-        
-    try:
-        model = genai.GenerativeModel(aktif_model_adi, generation_config={"temperature": 0.0})
+        # Otomatik aramayı tamamen iptal ettik, DİREKT 3.8'e bağlanıyor
+        model = genai.GenerativeModel('gemini-3.8-flash', generation_config={"temperature": 0.0})
         if gorsel_verisi:
             cevap = model.generate_content([komut, gorsel_verisi])
         else:
@@ -50,9 +40,11 @@ def ai_cevap_al(komut, gorsel_verisi=None):
     except Exception as e:
         hata_mesaji = str(e).lower()
         if "429" in hata_mesaji or "quota" in hata_mesaji:
-            raise Exception("Google API günlük ücretsiz işlem limitin doldu. Lütfen 16:00'dan sonra tekrar dene veya cümle pratiğini 'Geç' butonlarıyla atla.")
+            raise Exception("Google API günlük ücretsiz 20 işlem limitin doldu. Lütfen yarın Kore saatiyle 16:00'dan sonra tekrar dene veya cümle pratiğini 'Geç' butonlarıyla atla.")
+        elif "404" in hata_mesaji:
+            raise Exception("API Key bu modele erişemiyor. Google AI Studio üzerinden 'gemini-3.8-flash' erişimini kontrol et.")
         else:
-            raise Exception(f"API Hatası ({aktif_model_adi}): {e}")
+            raise Exception(f"Beklenmeyen API Hatası: {e}")
 
 def veritabani_guncelle():
     tum_veriler = st.session_state.kelimeler + st.session_state.calisilmis
